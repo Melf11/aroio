@@ -72,7 +72,7 @@ def fir_limit(board, rate):
 DAC_DRIVERS = [
     {"id": "auto", "label": "Automatisch", "hint": "Die Aufsteckkarte meldet sich selbst (EEPROM).", "lines": []},
     {"id": "aroio", "label": "Aroio DAC", "hint": "Aroio SU, EX, LT",
-     "lines": ["dtoverlay=hifiberry-dacplus", "dtoverlay=gpio-ir,gpio_pin=25", "dtoverlay=act-led,gpio=22",
+     "lines": ["dtoverlay=hifiberry-dacplus", "dtoverlay=act-led,gpio=22",
                "dtparam=act_led_trigger=heartbeat"]},
     {"id": "rpi-dacplus", "label": "Raspberry Pi DAC+ / DAC Pro (IQaudio)", "hint": "", "lines": ["dtoverlay=iqaudio-dacplus"]},
     {"id": "rpi-digiamp", "label": "Raspberry Pi DigiAMP+ (IQaudio)", "hint": "Mit Verstärker",
@@ -90,3 +90,33 @@ DAC_DRIVER_IDS = [d["id"] for d in DAC_DRIVERS]
 def dac_driver_lines(driver_id):
     d = next((x for x in DAC_DRIVERS if x["id"] == driver_id), DAC_DRIVERS[0])
     return ["# written by aroiod: " + d["label"]] + d["lines"]
+
+
+MODEL_IDS = list(MODELS)
+
+# Aroio remote (RC5, aroio-ng /etc/lirc/lircd.conf: 13 bit codes 0x160C ...): rc-core
+# scancode = address << 8 | command. Other remotes are taught in the app.
+DEFAULT_IR_MAP = {
+    "0x180d": "KEY_MUTE", "0x1811": "KEY_VOLUMEDOWN", "0x1810": "KEY_VOLUMEUP",
+    "0x1835": "KEY_PLAYPAUSE", "0x1836": "KEY_STOP", "0x1832": "KEY_PREVIOUS", "0x1834": "KEY_NEXT",
+}
+IR_ACTIONS = ["KEY_PLAYPAUSE", "KEY_STOP", "KEY_NEXT", "KEY_PREVIOUS", "KEY_VOLUMEUP", "KEY_VOLUMEDOWN",
+              "KEY_MUTE", "KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_5"]
+
+
+def boot_lines(driver_id, model_id, rotate=0, ir=False):
+    """Contents of aroio.txt on the boot partition: DAC driver, the model's controls
+    (rotary encoder, key) and the display rotation. Changes need a reboot."""
+    lines = dac_driver_lines(driver_id)
+    model = MODELS.get(model_id) or {}
+    enc = model.get("encoder")
+    if enc:
+        lines.append(f"dtoverlay=rotary-encoder,pin_a={enc['a']},pin_b={enc['b']},relative_axis=1")
+    key = (model.get("buttons") or {}).get("play_pause")
+    if key:
+        lines.append(f'dtoverlay=gpio-key,gpio={key},keycode=164,label="PLAYPAUSE"')
+    if ir:
+        lines.append(f"dtoverlay=gpio-ir,gpio_pin={COMMON_PINS['ir']}")
+    if rotate:
+        lines.append(f"display_rotate={rotate // 90}")
+    return lines

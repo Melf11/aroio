@@ -15,7 +15,7 @@ import logging
 import re
 import threading
 
-from .models import DAC_DRIVER_IDS
+from .models import DAC_DRIVER_IDS, DEFAULT_IR_MAP, IR_ACTIONS, MODEL_IDS
 from .store import atomic_write_json, load_json
 
 log = logging.getLogger("aroiod.config")
@@ -101,6 +101,7 @@ SCHEMA = {
         "fixed_rate": F(int, 96000, choices=RATES),
         "resampler": F(str, "balanced", choices=["fast", "balanced", "best"]),
         "start_volume": F(int, 30, lo=0, hi=100),
+        "max_rate": F(int, 192000, choices=RATES),      # highest rate the DAC takes
         "volume_limit": F(int, 100, lo=10, hi=100),
         "output": F(str, "auto", maxlen=60),
         "chunksize": F(int, 0, lo=0, hi=65536),         # 0 = measured default
@@ -142,6 +143,8 @@ SCHEMA = {
     "hardware": {
         "display_rotate": F(int, 0, choices=[0, 90, 180, 270]),
         "dac_driver": F(str, "aroio", choices=DAC_DRIVER_IDS),
+        "model": F(str, "auto", choices=["auto"] + MODEL_IDS),
+        # ir_map: {"0x180d": "KEY_MUTE", ...}, validated by check_ir_map()
         "onboard_wifi": F(bool, True),
         "onboard_bluetooth": F(bool, True),
         "ir_enabled": F(bool, True),
@@ -176,6 +179,7 @@ def default_config():
     cfg = defaults()
     cfg["version"] = VERSION
     cfg["dsp"]["presets"] = [builtin_bypass()]
+    cfg["hardware"]["ir_map"] = dict(DEFAULT_IR_MAP)
     return cfg
 
 
@@ -251,6 +255,19 @@ def check_presets(value):
     return out
 
 
+def check_ir_map(value):
+    if not isinstance(value, dict) or len(value) > 64:
+        raise Invalid("hardware.ir_map", "höchstens 64 Tasten")
+    out = {}
+    for code, action in value.items():
+        if not re.fullmatch(r"0x[0-9a-f]{1,8}", str(code)):
+            raise Invalid(f"hardware.ir_map.{code}", "ungültiger Code")
+        if action not in IR_ACTIONS:
+            raise Invalid(f"hardware.ir_map.{code}", "unbekannte Funktion")
+        out[str(code)] = action
+    return out
+
+
 def _merge(path, schema, current, patch):
     if not isinstance(patch, dict):
         raise Invalid(path or "config", "muss ein Objekt sein")
@@ -258,6 +275,9 @@ def _merge(path, schema, current, patch):
         sub = f"{path}.{key}" if path else key
         if path == "dsp" and key == "presets":
             current["presets"] = check_presets(value)
+            continue
+        if path == "hardware" and key == "ir_map":
+            current["ir_map"] = check_ir_map(value)
             continue
         if key not in schema:
             raise Invalid(sub, "unbekannte Einstellung")
@@ -283,7 +303,7 @@ def _fill(schema, cfg):
             except Invalid:
                 log.warning("Invalid stored value for %s, using default", key)
                 cfg[key] = copy.deepcopy(spec.default)
-    for key in [k for k in cfg if k not in schema and k not in ("presets", "version")]:
+    for key in [k for k in cfg if k not in schema and k not in ("presets", "version", "ir_map")]:
         del cfg[key]
 
 
@@ -308,6 +328,10 @@ def normalise(cfg):
     except Invalid as exc:
         log.warning("Invalid stored presets (%s), keeping only bypass", exc)
         cfg["dsp"]["presets"] = [builtin_bypass()]
+    try:
+        cfg["hardware"]["ir_map"] = check_ir_map(cfg["hardware"].get("ir_map", DEFAULT_IR_MAP))
+    except Invalid:
+        cfg["hardware"]["ir_map"] = dict(DEFAULT_IR_MAP)
     if cfg["dsp"]["active_preset"] not in {p["id"] for p in cfg["dsp"]["presets"]}:
         cfg["dsp"]["active_preset"] = "bypass"
     return cfg

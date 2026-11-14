@@ -28,6 +28,8 @@
   import SettingsAudio from './views/settings/Audio.svelte';
   import SettingsHardware from './views/settings/Hardware.svelte';
   import SettingsSystem from './views/settings/System.svelte';
+  import SettingsLicenses from './views/settings/Licenses.svelte';
+  import Login from './views/Login.svelte';
   import Setup from './views/Setup.svelte';
   import Migration from './views/Migration.svelte';
   import WifiSetup from './views/WifiSetup.svelte';
@@ -41,6 +43,7 @@
     ['/einstellungen/bluetooth', SettingsBluetooth], ['/einstellungen/updates', SettingsUpdates],
     ['/einstellungen/geraet', SettingsDevice], ['/einstellungen/ton', SettingsAudio],
     ['/einstellungen/hardware', SettingsHardware], ['/einstellungen/system', SettingsSystem],
+    ['/einstellungen/lizenzen', SettingsLicenses],
   ];
 
   const current = $derived.by(() => {
@@ -69,7 +72,9 @@
 <a class="skip" href="#main">{t('Zum Inhalt springen')}</a>
 <Toasts />
 
-{#if !app.everConnected}
+{#if app.needLogin}
+  <main id="main" class="flow"><Login /></main>
+{:else if !app.everConnected}
   <div class="splash" role="status">
     <img src="/icons/logo.svg" alt="" width="72" height="72" />
     <p>{t('Verbinde mit dem Aroio …')}</p>

@@ -40,3 +40,37 @@ CONFIG_PKCS8_PRIVATE_KEY_PARSER=y
 CONFIG_RFKILL=y
 # modules uncompressed: the root file system is compressed anyway, kmod needs no xz, faster loading
 # CONFIG_MODULE_COMPRESS is not set
+# info screen on HDMI: large console font (built in, no setfont needed)
+CONFIG_FONTS=y
+CONFIG_FONT_TER16x32=y
+CONFIG_FONT_8x16=y
+# Slimmer kernel: subsystems an audio streamer does not use (video/DVB, CAN, IIO,
+# RAID, joysticks, 1-wire, SATA, WLAN chips that are neither on board nor common
+# USB sticks). rc-core (IR) does not depend on MEDIA_SUPPORT. Keymaps are not
+# needed: aroiod maps the raw scancodes itself.
+# CONFIG_MEDIA_SUPPORT is not set
+# CONFIG_RC_MAP is not set
+# CONFIG_CAN is not set
+# CONFIG_IIO is not set
+# CONFIG_MD is not set
+# CONFIG_ATA is not set
+# CONFIG_W1 is not set
+# CONFIG_INPUT_JOYSTICK is not set
+# CONFIG_INPUT_TABLET is not set
+# CONFIG_HAMRADIO is not set
+# CONFIG_NFC is not set
+# CONFIG_WIMAX is not set
+# CONFIG_IEEE802154 is not set
+# CONFIG_WLAN_VENDOR_ADMTEK is not set
+# CONFIG_WLAN_VENDOR_ATMEL is not set
+# CONFIG_WLAN_VENDOR_INTEL is not set
+# CONFIG_WLAN_VENDOR_INTERSIL is not set
+# CONFIG_WLAN_VENDOR_MARVELL is not set
+# CONFIG_WLAN_VENDOR_MICROCHIP is not set
+# CONFIG_WLAN_VENDOR_PURELIFI is not set
+# CONFIG_WLAN_VENDOR_RSI is not set
+# CONFIG_WLAN_VENDOR_SILABS is not set
+# CONFIG_WLAN_VENDOR_ST is not set
+# CONFIG_WLAN_VENDOR_TI is not set
+# CONFIG_WLAN_VENDOR_ZYDAS is not set
+# CONFIG_WLAN_VENDOR_QUANTENNA is not set

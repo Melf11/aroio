@@ -5,11 +5,17 @@ TARGET="$1"
 BOARD_DIR="$(dirname "$0")"
 # read-only root: mutable state lives on /data
 mkdir -p "$TARGET/data"
-grep -q 'LABEL=data' "$TARGET/etc/fstab" || echo 'LABEL=data /data ext4 defaults,noatime,commit=5 0 2' >> "$TARGET/etc/fstab"
+# x-systemd.growfs: the file system follows when aroio-grow-data enlarged the partition
+sed -i '/LABEL=data/d' "$TARGET/etc/fstab"
+echo 'LABEL=data /data ext4 defaults,noatime,commit=5,x-systemd.growfs 0 2' >> "$TARGET/etc/fstab"
 # logs only in RAM
 mkdir -p "$TARGET/etc/systemd/journald.conf.d"
 printf '[Journal]\nStorage=volatile\nRuntimeMaxUse=16M\n' > "$TARGET/etc/systemd/journald.conf.d/aroio.conf"
 echo "${AROIO_VERSION:-dev}" > "$TARGET/etc/aroio-version"
+
+# SSH host keys on the data partition: the same key across reboots and updates
+# (Buildroot points /etc/dropbear to /var/run, a new key on every boot)
+ln -snf /data/dropbear "$TARGET/etc/dropbear"
 
 # development images: SSH login as root with the developer's public key (no passwords)
 rm -f "$TARGET/root/.ssh/authorized_keys"
@@ -39,6 +45,8 @@ mkdir -p "$TARGET/etc/systemd/system/multi-user.target.wants"
 while read -r unit; do
     [ -n "$unit" ] && ln -sf "/usr/lib/systemd/system/$unit" "$TARGET/etc/systemd/system/multi-user.target.wants/$unit"
 done < "$BOARD_DIR/post-build-enable.txt"
+mkdir -p "$TARGET/etc/systemd/system/data.mount.wants"
+ln -sf /usr/lib/systemd/system/aroio-grow-data.service "$TARGET/etc/systemd/system/data.mount.wants/aroio-grow-data.service"
 
 # RAUC: system.conf + keyring. Without a release certificate a development key is created
 # (only for development images; release builds pass AROIO_RAUC_CERT/AROIO_RAUC_KEY).

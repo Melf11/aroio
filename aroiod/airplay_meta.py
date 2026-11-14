@@ -1,0 +1,219 @@
+"""AirPlay metadata from shairport-sync (metadata pipe) -> title, artist, album, cover.
+
+shairport-sync writes items like
+
+    <item><type>636f7265</type><code>6d696e6d</code><length>5</length>
+    <data encoding="base64">
+    SGFsbG8=</data></item>
+
+type/code are 4 ASCII characters in hex: "core" items carry DAAP fields
+(minm title, asar artist, asal album, astm duration in ms), "ssnc" items come
+from shairport itself (PICT cover, prgr progress, pbeg/pend play begin/end,
+pfls/prsm pause/resume, snam name of the sending device, mden end of a
+metadata block). Parsing is pure and testable; the pipe reader lives in
+AirplayMeta.
+"""
+
+import asyncio
+import base64
+import hashlib
+import logging
+import os
+import re
+import stat
+from pathlib import Path
+
+log = logging.getLogger("aroiod.airplay")
+
+PIPE = "/run/shairport-sync/metadata"
+ITEM = re.compile(rb"<item><type>([0-9a-f]{8})</type><code>([0-9a-f]{8})</code><length>(\d+)</length>"
+                  rb"(?:\s*<data encoding=\"base64\">\s*([A-Za-z0-9+/=\s]*?)</data>)?\s*</item>")
+
+
+def _ascii(hexstr):
+    return bytes.fromhex(hexstr.decode()).decode("ascii", "replace")
+
+
+def parse(buffer):
+    """bytes -> ([(type, code, payload bytes)], rest of buffer not yet complete)"""
+    items, end = [], 0
+    for m in ITEM.finditer(buffer):
+        payload = base64.b64decode(re.sub(rb"\s", b"", m[4])) if m[4] else b""
+        items.append((_ascii(m[1]), _ascii(m[2]), payload))
+        end = m.end()
+    rest = buffer[end:]
+    if len(rest) > 8 * 1024 * 1024:        # garbage, never a valid item: start over
+        rest = b""
+    return items, rest
+
+
+def image_type(data):
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    return None
+
+
+class Track:
+    """Collects items into the meta shape of the app (see sim._external_meta)."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.title = self.artist = self.album = ""
+        self.duration = 0.0
+        self.position = None
+        self.cover = None              # (content type, bytes)
+        self.controller = None
+        self.volume = None
+
+    def feed(self, typ, code, data):
+        """Returns an event: "meta" (new values to show), "start", "stop", "pause", "resume" or None."""
+        text = lambda: data.decode("utf-8", "replace").strip()  # noqa: E731
+        if typ == "core":
+            if code == "minm":
+                self.title = text()
+            elif code == "asar":
+                self.artist = text()
+            elif code == "asal":
+                self.album = text()
+            elif code == "astm" and len(data) == 4:
+                self.duration = int.from_bytes(data, "big") / 1000.0
+            return None
+        if typ != "ssnc":
+            return None
+        if code == "mden":
+            return "meta"
+        if code == "PICT":
+            kind = image_type(data)
+            self.cover = (kind, data) if kind else None
+            return "meta"
+        if code == "prgr":
+            try:
+                start, cur, end = (int(x) for x in text().split("/"))
+            except ValueError:
+                return None
+            span = (end - start) & 0xFFFFFFFF
+            if span:
+                self.duration = span / 44100.0
+                self.position = ((cur - start) & 0xFFFFFFFF) / 44100.0
+            return "meta"
+        if code == "pvol":
+            # "airplay_volume,volume,lowest,highest": airplay_volume -30 (quiet) .. 0, -144 = mute
+            try:
+                av = float(text().split(",")[0])
+            except ValueError:
+                return None
+            self.volume = 0.0 if av <= -144 else max(0.0, min(100.0, (av + 30.0) / 30.0 * 100.0))
+            return "volume"
+        if code == "snam":
+            self.controller = text() or None
+            return None
+        return {"pbeg": "start", "pend": "stop", "pfls": "pause", "prsm": "resume"}.get(code)
+
+    def cover_id(self):
+        return hashlib.sha1(self.cover[1]).hexdigest()[:12] if self.cover else None
+
+    def meta(self):
+        cid = self.cover_id()
+        m = {"id": f"airplay:{cid or self.title}", "title": self.title or "AirPlay", "artist": self.artist,
+             "album": self.album, "duration": round(self.duration, 1),
+             "image": f"/api/v1/cover/airplay?v={cid}" if cid else None,
+             "format": {"codec": "ALAC", "bits": 16, "rate": 44100}, "provider": "airplay",
+             "controller": self.controller, "live": not self.duration}
+        if self.position is not None:
+            m["position"] = round(self.position, 1)
+        return m
+
+
+class AirplayMeta:
+    """Reads the shairport-sync metadata pipe on the device and reports to the Device."""
+
+    def __init__(self, device, path=PIPE):
+        self.device = device
+        self.path = Path(path)
+        self.track = Track()
+        self._buf = b""
+        self._pending = None
+
+    def start(self):
+        asyncio.ensure_future(self._run())
+
+    async def _run(self):
+        while True:
+            try:
+                await self._read_pipe()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("metadata pipe: %s", exc)
+            await asyncio.sleep(2)
+
+    async def _read_pipe(self):
+        if not self.path.exists():
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            os.mkfifo(self.path, 0o666)
+        if not stat.S_ISFIFO(self.path.stat().st_mode):
+            return
+        # O_RDWR keeps the FIFO open when shairport-sync restarts (no EOF busy loop)
+        fd = os.open(self.path, os.O_RDWR | os.O_NONBLOCK)
+        loop = asyncio.get_event_loop()
+        closed = loop.create_future()
+
+        def readable():
+            try:
+                chunk = os.read(fd, 65536)
+            except BlockingIOError:
+                return
+            except OSError as exc:
+                if not closed.done():
+                    closed.set_exception(exc)
+                return
+            self.handle_bytes(chunk)
+
+        loop.add_reader(fd, readable)
+        try:
+            await closed
+        finally:
+            loop.remove_reader(fd)
+            os.close(fd)
+
+    def handle_bytes(self, chunk):
+        items, self._buf = parse(self._buf + chunk)
+        for typ, code, data in items:
+            event = self.track.feed(typ, code, data)
+            if event:
+                self.handle_event(event)
+
+    def handle_event(self, event):
+        d = self.device
+        if event == "start":
+            self.track.position = None
+            d.source_started("airplay", self.track.meta(), rate=44100)
+        elif event == "stop":
+            d.source_stopped("airplay")
+            self.track.reset()
+        elif event == "volume":
+            if d.source == "airplay" and self.track.volume is not None:
+                d.remote_volume(self.track.volume)
+        elif event == "meta":
+            # several items arrive at once: report once per burst
+            if not _loop_running():
+                self._send()
+            elif self._pending is None:
+                self._pending = asyncio.get_running_loop().call_later(0.15, self._send)
+
+    def _send(self):
+        self._pending = None
+        self.device.external_meta("airplay", self.track.meta())
+
+    def cover(self):
+        return self.track.cover
+
+
+def _loop_running():
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False

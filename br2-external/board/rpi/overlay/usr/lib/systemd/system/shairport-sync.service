@@ -4,7 +4,11 @@ After=network.target avahi-daemon.service nqptp.service sound.target
 Requires=avahi-daemon.service nqptp.service
 
 [Service]
-ExecStart=/usr/bin/shairport-sync --configfile=/etc/shairport-sync.conf
+Environment=AROIO_NAME=Aroio
+EnvironmentFile=-/data/aroio/names.env
+# metadata pipe for aroiod (title, cover, volume): created here, shairport-sync writes into it
+ExecStartPre=/bin/sh -c 'mkdir -p /run/shairport-sync && [ -p /run/shairport-sync/metadata ] || mkfifo -m 600 /run/shairport-sync/metadata'
+ExecStart=/usr/bin/shairport-sync --configfile=/etc/shairport-sync.conf -a ${AROIO_NAME}
 Restart=always
 RestartSec=2
 

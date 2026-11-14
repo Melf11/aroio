@@ -2,6 +2,7 @@
   import { Smartphone, Trash2, BluetoothSearching } from '@lucide/svelte';
   import PageHeader from '../../components/PageHeader.svelte';
   import Toggle from '../../components/Toggle.svelte';
+  import Dialog from '../../components/Dialog.svelte';
   import { app, toast } from '../../lib/state.svelte.js';
   import { api, config } from '../../lib/api.js';
   import { t } from '../../lib/i18n.svelte.js';
@@ -9,6 +10,8 @@
   const left = $derived(b?.pairing_until ? Math.max(0, Math.round(b.pairing_until - app.now)) : 0);
   const save = async (patch) => { try { await config(patch); } catch (e) { toast(e.message, 'danger'); } };
   const pairing = (s) => api.post('/bluetooth/pairing', { seconds: s }).catch((e) => toast(e.message, 'danger'));
+  let confirmAll = $state(false);
+  const removeAll = () => api.del('/bluetooth/devices').then(() => { confirmAll = false; toast(t('Alle Kopplungen gelöscht.')); }).catch((e) => toast(e.message, 'danger'));
   const remove = (d) => api.del('/bluetooth/devices/' + encodeURIComponent(d.address)).then(() => toast(t('„{n}“ entfernt.', { n: d.name }))).catch((e) => toast(e.message, 'danger'));
 </script>
 
@@ -34,13 +37,23 @@
               <button class="icon-btn" type="button" onclick={() => remove(d)} aria-label={t('{n} entfernen', { n: d.name })}><Trash2 size={18} aria-hidden="true" /></button></li>
           {/each}
         </ul>
+        {#if b.devices.length > 1}<button class="btn all" type="button" onclick={() => (confirmAll = true)}><Trash2 size={18} aria-hidden="true" />{t('Alle Kopplungen löschen')}</button>{/if}
       {:else}<p class="muted">{t('Noch keine Geräte gekoppelt.')}</p>{/if}
       <ul class="list ar"><li><Toggle label={t('Automatisch wieder verbinden')} description={t('Bekannte Geräte verbinden sich nach dem Einschalten von selbst.')} checked={b.auto_reconnect} onchange={(v) => save({ sources: { bluetooth: { auto_reconnect: v } } })} /></li></ul>
     {/if}
   {/if}
 </div>
 
+<Dialog bind:open={confirmAll} title={t('Alle Kopplungen löschen?')}>
+  <p>{t('Alle Handys und Tablets müssen danach neu gekoppelt werden.')}</p>
+  {#snippet actions()}
+    <button class="btn" type="button" onclick={() => (confirmAll = false)}>{t('Abbrechen')}</button>
+    <button class="btn danger" type="button" onclick={removeAll}>{t('Alle löschen')}</button>
+  {/snippet}
+</Dialog>
+
 <style>
+  .all { margin-top: 12px; }
   .pair { margin-top: 16px; align-items: flex-start; }
   :global(.inline) { display: inline; vertical-align: -5px; color: var(--brand-ink); }
   .dev { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 16px; min-height: 56px; }

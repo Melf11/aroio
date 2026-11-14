@@ -15,22 +15,44 @@ import math
 import numpy as np
 
 
-class _Lazy:
-    """scipy takes seconds to import on a Pi and is only needed while measuring:
-    import it on first use, not at boot."""
-
-    def __init__(self, name):
-        self._name, self._mod = name, None
-
-    def __getattr__(self, attr):
-        if self._mod is None:
-            import importlib
-            self._mod = importlib.import_module(self._name)
-        return getattr(self._mod, attr)
+def fftconvolve(a, b):
+    """Linear convolution via FFT (what scipy.signal.fftconvolve does, numpy only)."""
+    n = len(a) + len(b) - 1
+    size = 1 << int(math.ceil(math.log2(max(n, 1))))
+    return np.fft.irfft(np.fft.rfft(a, size) * np.fft.rfft(b, size), size)[:n]
 
 
-signal = _Lazy("scipy.signal")
-optimize = _Lazy("scipy.optimize")
+def least_squares(fun, x0, lo, hi, max_iter=40):
+    """Bounded Levenberg-Marquardt (projected onto the bounds) with a numerical
+    Jacobian: enough for fitting a handful of PEQ filters, no scipy needed."""
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    x = np.clip(np.asarray(x0, float), lo, hi)
+    r = fun(x)
+    cost, lam = float(r @ r), 1e-3
+    for _ in range(max_iter):
+        J = np.empty((len(r), len(x)))
+        for i in range(len(x)):
+            h = 1e-6 * max(1.0, abs(x[i]))
+            xi = x.copy()
+            xi[i] = x[i] + h if x[i] + h <= hi[i] else x[i] - h
+            J[:, i] = (fun(xi) - r) / (xi[i] - x[i])
+        g, A = J.T @ r, J.T @ J
+        d = np.diag(A) + 1e-12
+        improved = False
+        while lam < 1e10:
+            step = np.linalg.solve(A + lam * np.diag(d), -g)
+            xn = np.clip(x + step, lo, hi)
+            rn = fun(xn)
+            cn = float(rn @ rn)
+            if cn < cost:
+                done = cost - cn < 1e-10 * max(cost, 1e-12)
+                x, r, cost, lam, improved = xn, rn, cn, max(lam / 3, 1e-12), True
+                break
+            lam *= 4
+        if not improved or done:
+            break
+    return x
+
 
 FMIN, FMAX_DEFAULT = 20.0, 500.0
 MAX_BOOST, MAX_CUT = 3.0, -15.0
@@ -59,12 +81,22 @@ def log_sweep(rate, seconds=8.0, f1=10.0, f2=None, level_db=-12.0):
     win[-fade:] = np.hanning(2 * fade)[fade:]
     sweep *= win * 10 ** (level_db / 20)
     inverse = sweep[::-1] * np.exp(-t * k / seconds)
-    inverse /= np.abs(np.fft.rfft(signal.fftconvolve(sweep, inverse))).max()
+    inverse /= np.abs(np.fft.rfft(fftconvolve(sweep, inverse))).max()
     return sweep, inverse
 
 
+def write_wav_f32(path, data, rate=48000):
+    """Mono 32-bit float WAV (format 3): what Acourate and REW import without loss."""
+    import struct
+    raw = np.asarray(data, dtype="<f4").tobytes()
+    header = struct.pack("<4sI4s4sIHHIIHH4sI", b"RIFF", 36 + len(raw), b"WAVE", b"fmt ", 16, 3, 1, rate,
+                         rate * 4, 4, 32, b"data", len(raw))
+    with open(path, "wb") as fh:
+        fh.write(header + raw)
+
+
 def impulse_response(recording, inverse):
-    ir = signal.fftconvolve(recording, inverse)
+    ir = fftconvolve(recording, inverse)
     peak = int(np.argmax(np.abs(ir)))
     return ir, peak
 
@@ -215,8 +247,7 @@ def fit_peq(freqs, measured, target, fmax=FMAX_DEFAULT, max_filters=MAX_FILTERS,
             lo += [f_low, MAX_CUT, 0.5]
             hi += [fmax * 1.2, 0.0, 6.0]
         p0 = np.clip(params, lo, hi)
-        res = optimize.least_squares(residual, p0, bounds=(lo, hi), max_nfev=300)
-        params = list(res.x)
+        params = list(least_squares(residual, p0, lo, hi))
 
     filters = params_to_filters(params) if params else []
     filters = [f for f in filters if abs(f["gain"]) >= 0.5]
@@ -329,22 +360,26 @@ class SimRoom:
         h[d] = 1.0
         h[d + int(0.004 * rate)] += 0.35 * (1 + 0.1 * position)    # floor reflection
         h[d + int(0.011 * rate)] -= 0.2
-        # speaker: 2nd order high-pass at 38 Hz
-        b, a = signal.butter(2, 38 / (rate / 2), "highpass")
-        h = signal.lfilter(b, a, h)
-        # room modes as peaking filters with position-dependent gain
+        # speaker (2nd order high-pass at 38 Hz) and room modes, applied in the
+        # frequency domain (numpy only; long enough FFT so the decays do not wrap)
         from .dsp import biquad_coeffs
+        size = 1 << int(math.ceil(math.log2(4 * n)))
+        z = np.exp(-1j * 2 * np.pi * np.fft.rfftfreq(size))      # cycles per sample
+        def resp(f):
+            bq, aq = biquad_coeffs(f, rate)
+            return (bq[0] + bq[1] * z + bq[2] * z * z) / (aq[0] + aq[1] * z + aq[2] * z * z)
+        H = resp({"type": "highpass", "freq": 38.0, "q": 1 / math.sqrt(2)})
         for f, g, q in self.MODES:
             gain = g * (1 - 0.15 * position * rng.uniform(0.5, 1.0))
-            bq, aq = biquad_coeffs({"type": "peaking", "freq": f, "gain": gain, "q": q}, rate)
-            h = signal.lfilter(bq, aq, h)
+            H = H * resp({"type": "peaking", "freq": f, "gain": gain, "q": q})
+        h = np.fft.irfft(np.fft.rfft(h, size) * H, size)[:n]
         h += rng.normal(0, 1e-5, n) * np.exp(-np.arange(n) / (0.15 * rate))
         if channel == "R":
             h *= 0.93  # right speaker a bit quieter
         return h
 
     def record(self, sweep, channel, position, noise_db=-75.0):
-        rec = signal.fftconvolve(sweep, self.ir(channel, position))
+        rec = fftconvolve(sweep, self.ir(channel, position))
         rng = np.random.default_rng(self.seed + position)
         rec += rng.normal(0, 10 ** (noise_db / 20), len(rec))
         return rec

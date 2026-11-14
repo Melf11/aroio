@@ -240,6 +240,13 @@ def migrate(text, filter_files=()):
             continue
         rates = {r: files for r, files in by_name.get(name, {}).items() if set(files) == {"L", "R"}}
         pid = f"bank{i}"
+        factory = {"BBCDip": "werk-bbcdip", "Echo": "werk-echo"}.get(name)
+        if not rates and factory:
+            # ABACUS factory filter from the old system (LOAD_PREFILTER): built into the new one
+            rep.add("Klang", f"Filterbank {i + 1}: {name}", "Werksfilter, im neuen Aroio eingebaut")
+            if str(i) == str(def_coeff) and bf:
+                active = factory
+            continue
         if not rates:
             rep.add("Klang", f"Filterbank {i + 1}: {name}", "Filterdateien fehlen", "check",
                     f"Für „{name}“ wurden keine Dateien gefunden. Bitte die Filter neu hochladen.")
@@ -272,6 +279,7 @@ def migrate(text, filter_files=()):
             active = pid
     if presets:
         patch["dsp"]["presets"] = presets
+    if presets or active != "bypass":
         patch["dsp"]["active_preset"] = active
     elif bf:
         rep.add("Klang", "Raumkorrektur", "keine Filter gefunden", "check",

@@ -48,11 +48,39 @@ def pink_noise(n, seed=0):
     return noise / np.sqrt(np.mean(noise ** 2)) * 10 ** (-15 / 20)
 
 
+# Main open source components (the device lists all packages from Buildroot's show-info)
+LICENSES = [
+    {"name": "Buildroot", "license": "GPL-2.0+", "url": "https://buildroot.org"},
+    {"name": "Linux (Raspberry Pi)", "license": "GPL-2.0", "url": "https://github.com/raspberrypi/linux"},
+    {"name": "CamillaDSP", "license": "GPL-3.0-only or MPL-2.0", "url": "https://github.com/HEnquist/camilladsp"},
+    {"name": "Squeezelite", "license": "GPL-3.0+", "url": "https://github.com/ralph-irving/squeezelite"},
+    {"name": "Shairport Sync", "license": "MIT", "url": "https://github.com/mikebrady/shairport-sync"},
+    {"name": "NQPTP", "license": "GPL-2.0", "url": "https://github.com/mikebrady/nqptp"},
+    {"name": "librespot", "license": "MIT", "url": "https://github.com/librespot-org/librespot"},
+    {"name": "upmpdcli", "license": "LGPL-2.1+", "url": "https://www.lesbonscomptes.com/upmpdcli/"},
+    {"name": "MPD", "license": "GPL-2.0+", "url": "https://www.musicpd.org"},
+    {"name": "BlueZ", "license": "GPL-2.0+", "url": "https://www.bluez.org"},
+    {"name": "BlueALSA", "license": "MIT", "url": "https://github.com/arkq/bluez-alsa"},
+    {"name": "iwd", "license": "LGPL-2.1+", "url": "https://iwd.wiki.kernel.org"},
+    {"name": "hostapd", "license": "BSD-3-Clause", "url": "https://w1.fi/hostapd/"},
+    {"name": "dnsmasq", "license": "GPL-2.0", "url": "https://thekelleys.org.uk/dnsmasq/"},
+    {"name": "RAUC", "license": "LGPL-2.1", "url": "https://rauc.io"},
+    {"name": "systemd", "license": "LGPL-2.1+", "url": "https://systemd.io"},
+    {"name": "Python", "license": "PSF-2.0", "url": "https://www.python.org"},
+    {"name": "NumPy", "license": "BSD-3-Clause", "url": "https://numpy.org"},
+    {"name": "aiohttp", "license": "Apache-2.0", "url": "https://github.com/aio-libs/aiohttp"},
+    {"name": "Svelte", "license": "MIT", "url": "https://svelte.dev"},
+    {"name": "Lucide Icons", "license": "ISC", "url": "https://lucide.dev"},
+    {"name": "Raspberry Pi firmware", "license": "proprietary (redistributable)", "url": "https://github.com/raspberrypi/firmware"},
+]
+
+
 class MeasurementCancelled(Exception):
     pass
 
 
 class SimWorld:
+    rate_from_loopback = False      # the simulator reports rates from the sources
     simulated = True
     hw_volume = False
     speed = 1.0
@@ -125,9 +153,39 @@ class SimWorld:
         from .real import list_outputs
         return list_outputs(self.cards(), getattr(self, "active_driver", None))
 
-    def set_dac_driver(self, driver):
-        from .models import dac_driver_lines
-        self.log("Boot-Partition aroio.txt: " + " | ".join(dac_driver_lines(driver)[1:] or ["(leer)"]) + ", aktiv nach Neustart")
+    def write_boot_config(self, lines):
+        self.boot_lines = lines
+        self.log("Boot-Partition aroio.txt: " + " | ".join(lines[1:] or ["(leer)"]) + ", aktiv nach Neustart")
+
+    def test_noise(self, channel):
+        self.noise_channel = channel
+        if channel:
+            self._audio_request("noise_loop", channel=channel)
+            self.log(f"Testrauschen {'links' if channel == 'L' else 'rechts' if channel == 'R' else 'beide'}")
+        else:
+            self._audio_request("noise_stop")
+            self.log("Testrauschen aus")
+
+    def licenses(self):
+        return LICENSES
+
+    def logs(self, unit):
+        now = time.strftime("%b %d %H:%M:%S")
+        lines = {
+            "system": [f"{now} aroio systemd[1]: Startup finished in 2.1s (kernel) + 3.4s (userspace) = 5.5s."],
+            "audio": [f"{now} aroio camilladsp[290]: Capture started, rate {self.device.rate}"],
+            "lyrion": [f"{now} aroio squeezelite[401]: connected to {self.lyrion_external or 'local'}"],
+            "airplay": [f"{now} aroio shairport-sync[288]: AirPlay 2 ready as {self.device.config.get('device.name')}"],
+            "spotify": [f"{now} aroio librespot[300]: Zeroconf ready"],
+            "bluetooth": [f"{now} aroio bluetoothd[213]: Bluetooth daemon 5.79"],
+            "network": [f"{now} aroio iwd[205]: Wireless daemon version 3.10"],
+            "kernel": [f"{now} aroio kernel: snd-soc-aroio: registered"],
+        }.get(unit)
+        if lines is None:
+            raise KeyError(unit)
+        if unit == "system":
+            lines += [f"{e['t']} sim: {e['text']}" for e in reversed(self.events)]
+        return lines
 
     def log(self, text):
         self.events.insert(0, {"t": time.strftime("%H:%M:%S"), "text": text})
@@ -302,22 +360,25 @@ class SimWorld:
         mode = cfg["services"]["lyrion_local"]
         if mode == "on" or (mode == "auto" and not (configured or self.lyrion_external)):
             return {"mode": "local", "server": "dieser Aroio", "status": "connected", "version": "9.1.0",
-                    "plugins": ["TIDAL", "Qobuz", "Radio"]}
+                    "plugins": ["TIDAL", "Qobuz", "Radio"], "web": f"http://{cfg['network']['hostname']}.local:9000/"}
         server = configured or self.lyrion_external
         if not server:
             return {"mode": "none", "server": None, "status": "not_found"}
+        port = cfg["sources"]["lms"]["port"]
         return {"mode": "external", "server": server, "status": "connected", "version": "9.0.3",
-                "found_automatically": not configured, "plugins": ["TIDAL", "Qobuz", "Radio"]}
+                "found_automatically": not configured, "plugins": ["TIDAL", "Qobuz", "Radio"],
+                "web": f"http://{server}:{port}/"}
 
     # ── network ──
     def network_status(self, cfg):
         lan_cfg, wifi_cfg = cfg["network"]["lan"], cfg["network"]["wifi"]
         lan_addr = (lan_cfg["address"] if not lan_cfg["dhcp"] else "192.168.1.57") if self.lan else None
         wifi_addr = "192.168.1.88" if self.wifi_ssid else None
-        return {"lan": {"connected": self.lan, "address": lan_addr, "dhcp": lan_cfg["dhcp"], "speed": "1 Gbit/s" if self.lan else None},
+        return {"lan": {"connected": self.lan, "address": lan_addr, "dhcp": lan_cfg["dhcp"], "speed": "1 Gbit/s" if self.lan else None,
+                        "mac": "dc:a6:32:3f:2a:10"},
                 "wifi": {"connected": bool(self.wifi_ssid), "ssid": self.wifi_ssid or wifi_cfg["ssid"] or None,
                          "address": wifi_addr, "signal": -55 if self.wifi_ssid else None,
-                         "enabled": wifi_cfg["enabled"] and cfg["hardware"]["onboard_wifi"]},
+                         "enabled": wifi_cfg["enabled"] and cfg["hardware"]["onboard_wifi"], "mac": "dc:a6:32:3f:2a:11"},
                 "internet": self.internet and (self.lan or bool(self.wifi_ssid)),
                 "hostname": cfg["network"]["hostname"]}
 
@@ -372,6 +433,10 @@ class SimWorld:
 
     def bt_remove(self, address):
         self.bt_devices = [d for d in self.bt_devices if d["address"] != address]
+
+    def bt_remove_all(self):
+        self.bt_devices = []
+        self.log("Bluetooth: alle Kopplungen gelöscht")
 
     # ── updates ──
     async def check_update(self, channel):
@@ -579,6 +644,12 @@ class SimWorld:
                 d.wizard.publish()
             self.log({"none": "Kein Mikrofon", "sim": "Mikrofon: simulierter Raum",
                       "host": f"Mikrofon am Rechner: {self.host_mic or 'nicht gewählt'}"}[self.mic_mode])
+        elif name == "ir":
+            code = int(str(data["code"]), 0)
+            if not d.on_ir(code):
+                self.log(f"IR-Code {hex(code)} (keine Funktion)")
+            else:
+                self.log(f"IR-Code {hex(code)}")
         elif name == "usb_dac":
             self.usb_dac = bool(data["on"])
             self.log("USB-DAC eingesteckt" if self.usb_dac else "USB-DAC abgezogen")

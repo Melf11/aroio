@@ -29,11 +29,15 @@ BIQUAD_TYPES = {"peaking": "Peaking", "lowshelf": "Lowshelf", "highshelf": "High
 
 def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
                    capture="hw:Loopback,1", playback="hw:0,0", chunksize=None,
-                   target_level=None, resampler=None, capture_rate=None):
+                   target_level=None, resampler=None, capture_rate=None, release_capture=False,
+                   capture_format="S32_LE"):
     """Return the CamillaDSP config dict for one preset at one sample rate.
 
     rate          processing/playback rate
     capture_rate  rate of the source if different (fixed-rate mode, resampler on)
+    release_capture  stop when no player has the loopback open (device): the next
+                  player opens it at its own rate, aroiod then restarts CamillaDSP
+                  at exactly that rate (real.LoopbackWatch)
     """
     chunk = chunksize or default_chunksize(rate)
     devices = {
@@ -44,7 +48,8 @@ def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
         "stop_on_rate_change": capture_rate is None,
         "rate_measure_interval": 1.0,
         "volume_ramp_time": 150,
-        "capture": {"type": "Alsa", "channels": 2, "device": capture, "format": "S32_LE"},
+        "capture": {"type": "Alsa", "channels": 2, "device": capture, "format": capture_format,
+                    **({"stop_on_inactive": True} if release_capture else {})},
         "playback": {"type": "Alsa", "channels": 2, "device": playback, "format": "S32_LE"},
     }
     if capture_rate and capture_rate != rate:

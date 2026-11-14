@@ -1,0 +1,20 @@
+#!/bin/sh
+# Grows the data partition (the last one) to the end of the card. Runs before
+# /data is mounted; the file system follows online after the mount
+# (x-systemd.growfs in fstab). Does nothing once the partition fills the card.
+set -eu
+DEV=$(readlink -f /dev/disk/by-label/data)
+NAME=${DEV#/dev/}
+SYS=/sys/class/block/$NAME
+DISKNAME=$(basename "$(readlink -f "$SYS/..")")
+DISK=/dev/$DISKNAME
+PART=$(cat "$SYS/partition")
+END=$(( $(cat "$SYS/start") + $(cat "$SYS/size") ))
+TOTAL=$(cat "/sys/class/block/$DISKNAME/size")
+# less than 8 MiB left: nothing to do
+if [ $((TOTAL - END)) -lt 16384 ]; then
+    exit 0
+fi
+echo "data partition $DEV: growing from $((END / 2048)) MiB to the end of $DISK ($((TOTAL / 2048)) MiB)"
+echo ", +" | sfdisk --no-reread --no-tell-kernel -N "$PART" "$DISK"
+partx -u --nr "$PART" "$DISK"

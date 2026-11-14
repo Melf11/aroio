@@ -33,8 +33,8 @@
   <PageHeader title={t('Netzwerk')} backTo="/einstellungen" />
   {#if n}
     <ul class="list">
-      <li class="st"><Cable size={22} aria-hidden="true" /><div class="grow"><strong>LAN</strong><br /><span class="muted small">{n.lan.connected ? t('Verbunden · {ip}', { ip: n.lan.address }) : t('Kein Kabel')}</span></div>{#if n.lan.connected}<span class="badge ok">{t('Verbunden')}</span>{/if}</li>
-      <li class="st"><Wifi size={22} aria-hidden="true" /><div class="grow"><strong>WLAN</strong><br /><span class="muted small">{n.wifi.connected ? t('„{ssid}“ · {ip}', { ssid: n.wifi.ssid, ip: n.wifi.address }) : t('Nicht verbunden')}</span></div>{#if n.wifi.connected}<span class="badge ok">{t('Verbunden')}</span>{/if}</li>
+      <li class="st"><Cable size={22} aria-hidden="true" /><div class="grow"><strong>LAN</strong><br /><span class="muted small">{n.lan.connected ? t('Verbunden · {ip}', { ip: n.lan.address }) : t('Kein Kabel')}</span>{#if n.lan.mac}<br /><span class="muted small">MAC {n.lan.mac}</span>{/if}</div>{#if n.lan.connected}<span class="badge ok">{t('Verbunden')}</span>{/if}</li>
+      <li class="st"><Wifi size={22} aria-hidden="true" /><div class="grow"><strong>WLAN</strong><br /><span class="muted small">{n.wifi.connected ? t('„{ssid}“ · {ip}', { ssid: n.wifi.ssid, ip: n.wifi.address }) : t('Nicht verbunden')}</span>{#if n.wifi.mac}<br /><span class="muted small">MAC {n.wifi.mac}</span>{/if}</div>{#if n.wifi.connected}<span class="badge ok">{t('Verbunden')}</span>{/if}</li>
       {#if n.hotspot.active}<li class="st"><Router size={22} aria-hidden="true" /><div class="grow"><strong>{t('Einrichtungs-Hotspot')}</strong><br /><span class="muted small">{n.hotspot.ssid}</span></div></li>{/if}
     </ul>
     <p class="muted small addr">{t('Adresse der App: {url}', { url: `http://${n.hostname}.local` })}</p>

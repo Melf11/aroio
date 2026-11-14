@@ -6,3 +6,8 @@ bluetooth.service
 bluealsa.service
 bluealsa-aplay.service
 aroio-bt-agent.service
+aroio-spotify.service
+upmpdcli.service
+mpd.service
+squeezelite.service
+aroio-infoscreen.service

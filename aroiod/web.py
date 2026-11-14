@@ -17,6 +17,7 @@ from aiohttp import WSMsgType, web
 
 from . import dsp
 from .config import Invalid
+from .engine import SOURCES
 from .library import art_svg
 from .migration import FILTER_RE, RATE_TOKENS
 from .store import load_json
@@ -36,6 +37,15 @@ async def captive(request, handler):
     if ns and ns.is_foreign_host(request.host, request.path):
         from .netsetup import HOTSPOT_ADDRESS, PORTAL_PATH
         raise web.HTTPFound(f"http://{HOTSPOT_ADDRESS}{PORTAL_PATH}", headers={"Cache-Control": "no-store"})
+    return await handler(request)
+
+
+@web.middleware
+async def auth(request, handler):
+    """Optional app password: API and live sockets need a session (see auth.py)."""
+    a = request.app[DEVICE].auth
+    if not a.allowed(request):
+        return web.json_response({"error": "Bitte anmelden.", "login": True}, status=401)
     return await handler(request)
 
 
@@ -135,6 +145,68 @@ async def levels_ws(request):
         task.cancel()
         lv.unsubscribe(q)
     return ws
+
+
+# ── app password ──
+
+@routes.get(A + "/auth/status")
+async def auth_status(request):
+    a = dev(request).auth
+    from .auth import COOKIE
+    return ok({"enabled": a.enabled, "logged_in": (not a.enabled) or a.valid(request.cookies.get(COOKIE))})
+
+
+def _session_cookie(resp, token):
+    from .auth import COOKIE
+    resp.set_cookie(COOKIE, token, max_age=365 * 86400, httponly=True, samesite="Lax", path="/")
+
+
+@routes.post(A + "/auth/login")
+async def auth_login(request):
+    a, data = dev(request).auth, await body(request)
+    if not a.enabled:
+        return ok()
+    if not a.check(str(data.get("password", ""))):
+        await asyncio.sleep(1.0)                 # slow down guessing
+        raise ValueError("Das Passwort stimmt nicht.")
+    resp = ok()
+    _session_cookie(resp, a.new_session())
+    return resp
+
+
+@routes.post(A + "/auth/logout")
+async def auth_logout(request):
+    from .auth import COOKIE
+    dev(request).auth.end_session(request.cookies.get(COOKIE))
+    resp = ok()
+    resp.del_cookie(COOKIE, path="/")
+    return resp
+
+
+@routes.post(A + "/security/password")
+async def set_app_password(request):
+    """{"password": "..."} sets it (and logs this browser in), {"password": null} turns it off."""
+    token = dev(request).auth.set_password((await body(request)).get("password"))
+    resp = ok()
+    if token:
+        _session_cookie(resp, token)
+    return resp
+
+
+@routes.get(A + "/internal/status")
+async def internal_status(request):
+    """For the info screen on the device (localhost only, no password)."""
+    if request.remote not in ("127.0.0.1", "::1"):
+        raise web.HTTPForbidden()
+    d = dev(request)
+    s = d.hub.snapshot()
+    p, n = s.get("player") or {}, s.get("network") or {}
+    t = p.get("track") or {}
+    return ok({"name": d.config.get("device.name"), "hostname": d.config.get("network.hostname"),
+               "lan": (n.get("lan") or {}).get("address"), "wifi": (n.get("wifi") or {}).get("address"),
+               "hotspot": (n.get("hotspot") or {}).get("ssid"), "state": p.get("state"),
+               "source": p.get("source_name"), "title": t.get("title"), "artist": t.get("artist"),
+               "volume": p.get("volume"), "rate": (p.get("signal") or {}).get("rate_out")})
 
 
 # ── config ───────────────────────────────────────────────────────────────────
@@ -356,6 +428,19 @@ async def dsp_import(request):
 
 # ── room correction ──────────────────────────────────────────────────────────
 
+@routes.get(A + "/roomcorr/recordings.zip")
+async def roomcorr_recordings(request):
+    last = dev(request).data / "measurements" / "last"
+    if not (last / "info.txt").exists():
+        raise KeyError("Noch keine Messung")
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(last.iterdir()):
+            z.write(f, f.name)
+    return web.Response(body=buf.getvalue(), content_type="application/zip", headers={
+        "Content-Disposition": f'attachment; filename="aroio-messung-{time.strftime("%Y%m%d-%H%M")}.zip"'})
+
+
 @routes.post(A + "/roomcorr/{action}")
 async def roomcorr_action(request):
     await dev(request).wizard.action(request.match_info["action"], await body(request))
@@ -363,6 +448,13 @@ async def roomcorr_action(request):
 
 
 # ── services ─────────────────────────────────────────────────────────────────
+
+@routes.post(A + "/services/lyrion/credentials")
+async def lyrion_credentials(request):
+    data = await body(request)
+    dev(request).set_lyrion_credentials(data.get("user"), data.get("password"))
+    return ok()
+
 
 @routes.post(A + "/services/{provider}/login")
 async def service_login(request):
@@ -402,6 +494,14 @@ async def bt_pairing(request):
     return ok()
 
 
+@routes.delete(A + "/bluetooth/devices")
+async def bt_remove_all(request):
+    d = dev(request)
+    d.world.bt_remove_all()
+    d.publish_bluetooth()
+    return ok()
+
+
 @routes.delete(A + "/bluetooth/devices/{address}")
 async def bt_remove(request):
     d = dev(request)
@@ -421,22 +521,48 @@ async def system_info(request):
                "storage": {"used": 1.2, "total": 29.7}, "simulated": d.world.simulated})
 
 
+@routes.get(A + "/cover/{provider}")
+async def cover(request):
+    """Cover art that only exists on the device (AirPlay sends it with the stream)."""
+    getter = getattr(dev(request).world, "cover", None)
+    art = getter(request.match_info["provider"]) if getter else None
+    if not art:
+        raise web.HTTPNotFound()
+    kind, data = art
+    return web.Response(body=data, content_type=kind, headers={"Cache-Control": "max-age=86400"})
+
+
+@routes.get(A + "/system/licenses")
+async def licenses(request):
+    return ok({"components": dev(request).world.licenses()})
+
+
+@routes.get(A + "/hardware/ir")
+async def ir_get(request):
+    d = dev(request)
+    from .models import IR_ACTIONS
+    return ok({"map": d.config.get("hardware.ir_map"), "last": d.last_ir, "actions": IR_ACTIONS,
+               "enabled": d.config.get("hardware.ir_enabled")})
+
+
+@routes.post(A + "/hardware/ir/learn")
+async def ir_learn(request):
+    code = await dev(request).learn_ir((await body(request)).get("action"))
+    return ok({"code": code})
+
+
+@routes.post(A + "/hardware/ir/reset")
+async def ir_reset(request):
+    from .models import DEFAULT_IR_MAP
+    dev(request).patch_config({"hardware": {"ir_map": dict(DEFAULT_IR_MAP)}})
+    return ok()
+
+
 @routes.get(A + "/system/logs")
 async def system_logs(request):
     unit = request.query.get("unit", "system")
-    now = time.strftime("%b %d %H:%M:%S")
-    lines = {
-        "system": [f"{now} aroio systemd[1]: Startup finished in 2.1s (kernel) + 3.4s (userspace) = 5.5s.",
-                   f"{now} aroio aroiod[312]: ready, audio path up"],
-        "audio": [f"{now} aroio camilladsp[290]: Capture started, rate {dev(request).rate}",
-                  f"{now} aroio camilladsp[290]: Buffer level OK, no xruns"],
-        "lyrion": [f"{now} aroio squeezelite[401]: connected to {dev(request).world.lyrion_external or 'local'}"],
-        "kernel": [f"{now} aroio kernel: snd-soc-aroio: registered"],
-    }.get(unit)
-    if lines is None:
-        raise KeyError(unit)
-    events = [f"{e['t']} sim: {e['text']}" for e in reversed(dev(request).world.events)]
-    return ok({"unit": unit, "lines": lines + (events if unit == "system" else [])})
+    lines = await asyncio.get_event_loop().run_in_executor(None, dev(request).world.logs, unit)
+    return ok({"unit": unit, "lines": lines})
 
 
 @routes.get(A + "/system/diagnostics")
@@ -447,7 +573,12 @@ async def diagnostics(request):
         cfg = json.loads(json.dumps(d.config.data))
         z.writestr("config.json", json.dumps(cfg, indent=2, ensure_ascii=False))
         z.writestr("state.json", json.dumps(d.hub.snapshot(), indent=2, ensure_ascii=False, default=str))
-        z.writestr("camilladsp.json", json.dumps(getattr(d.world, "camilla", None), indent=2))
+        cam = getattr(d.world, "camilla", None)
+        z.writestr("camilladsp.json", json.dumps(cam if isinstance(cam, dict) else getattr(cam, "config", None), indent=2))
+        extra = getattr(d.world, "diagnostics_files", None)
+        if extra:
+            for name, text in (await asyncio.get_event_loop().run_in_executor(None, extra)).items():
+                z.writestr(name, text)
     return web.Response(body=buf.getvalue(), content_type="application/zip", headers={
         "Content-Disposition": f'attachment; filename="aroio-diagnose-{time.strftime("%Y%m%d-%H%M")}.zip"'})
 
@@ -463,6 +594,8 @@ async def system_action(request):
         asyncio.create_task(_safe(d.reboot()))
     elif action == "test-tone":
         d.test_tone(data.get("channel", "both"))
+    elif action == "test-noise":
+        d.test_noise(data.get("channel"))
     elif action == "factory-reset":
         if data.get("confirm") != "zuruecksetzen":
             raise ValueError("Bitte bestätigen.")
@@ -581,14 +714,18 @@ async def internal_source(request):
     sid, event = data.get("source"), data.get("event")
     if sid not in ("lms", "spotify", "airplay", "upnp", "bluetooth", "input", "roon"):
         raise ValueError("Unbekannte Quelle")
-    meta = data.get("meta") or {"title": sid, "artist": "", "album": "", "duration": 0, "live": True,
-                                "format": {"codec": "PCM", "bits": 0, "rate": data.get("rate") or 44100}}
+    meta = data.get("meta") or d.source_meta.get(sid) or {
+        "title": SOURCES[sid]["name"], "artist": "", "album": "", "duration": 0, "live": True,
+        "format": {"codec": "PCM", "bits": 0, "rate": data.get("rate") or 44100}}
     if event == "start":
         d.source_started(sid, meta, rate=data.get("rate"))
     elif event == "stop":
         d.source_stopped(sid)
     elif event == "meta":
         d.external_meta(sid, meta)
+    elif event == "volume":
+        if d.source == sid:
+            d.remote_volume(float(data.get("volume", 0)))
     else:
         raise ValueError("Unbekanntes Ereignis")
     return ok()
@@ -606,7 +743,7 @@ async def sim_event(request):
 # ── app ──────────────────────────────────────────────────────────────────────
 
 def build_app(device, static_dir=None):
-    app = web.Application(middlewares=[captive, errors], client_max_size=64 * 1024 * 1024)
+    app = web.Application(middlewares=[captive, auth, errors], client_max_size=64 * 1024 * 1024)
     app[DEVICE] = device
     app[WORLD] = device.world
     app[STARTED] = time.monotonic()

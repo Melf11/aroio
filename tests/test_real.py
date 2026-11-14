@@ -85,9 +85,9 @@ async def test_camilla_client_protocol(aiohttp_server):
         if client.state["load"] is not None:
             break
     names = [c if isinstance(c, str) else next(iter(c)) for c in fake.received]
-    assert names[:3] == ["SetConfigJson", "SetVolume", "SetMute"]        # config re-sent on connect
-    assert json.loads(fake.received[0]["SetConfigJson"])["devices"]["samplerate"] == 44100
-    assert fake.received[1] == {"SetVolume": -20.0}
+    assert names[:4] == ["SetUpdateInterval", "SetConfigJson", "SetVolume", "SetMute"]   # config re-sent on connect
+    assert json.loads(fake.received[1]["SetConfigJson"])["devices"]["samplerate"] == 44100
+    assert fake.received[2] == {"SetVolume": -20.0}
     assert client.state["load"] == 3.5
     await client.set_volume(None)                                         # mute
     assert fake.received[-1] == {"SetMute": True}
@@ -161,3 +161,27 @@ def test_parse_bt_devices():
     text = "Device A4:C3:F0:11:22:33 iPhone von Anna\nDevice F0:99:11:22:33:44 Galaxy S24\nirrelevant\n"
     assert real.parse_bt_devices(text) == [{"address": "A4:C3:F0:11:22:33", "name": "iPhone von Anna"},
                                            {"address": "F0:99:11:22:33:44", "name": "Galaxy S24"}]
+
+
+def test_loopback_rate_follows_player():
+    from aroiod.real import LoopbackWatch, loopback_rate
+    assert loopback_rate("closed\n") is None
+    assert loopback_rate("access: MMAP_INTERLEAVED\nformat: S32_LE\nrate: 44100 (44100/1)\n") == 44100
+
+    class D:
+        calls = []
+        def loopback_opened(self, r, f): self.calls.append((r, f))
+    d = D()
+    w = LoopbackWatch(d)
+    a, b = (44100, "S16_LE"), (96000, "S32_LE")
+    for r in (None, a, a, None, a, b):
+        w.check(r)
+    assert d.calls == [a, a, b]       # again after closing: CamillaDSP had stopped
+
+
+def test_capture_released_on_device():
+    from aroiod import dsp
+    from aroiod.config import builtin_bypass
+    cfg = dsp.camilla_config(builtin_bypass(), 44100, release_capture=True)
+    assert cfg["devices"]["capture"]["stop_on_inactive"] is True
+    assert "stop_on_inactive" not in dsp.camilla_config(builtin_bypass(), 44100)["devices"]["capture"]

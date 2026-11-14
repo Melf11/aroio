@@ -236,6 +236,11 @@ class CamillaClient:
         return body.get("value")
 
     async def _resend(self):
+        # signal levels every 50 ms (default 1 s: the level meter would mostly get nothing)
+        try:
+            await self.call("SetUpdateInterval", 50)
+        except RuntimeError as exc:
+            log.debug("SetUpdateInterval: %s", exc)
         if self.config is not None:
             await self.call("SetConfigJson", json.dumps(self.config))
         await self.call("SetVolume", self.volume_db)
@@ -304,8 +309,95 @@ def detect_model():
     return "RaspberryPi"
 
 
+# ALSA sample format -> CamillaDSP 4 name
+CAMILLA_FORMATS = {"S16_LE": "S16_LE", "S24_LE": "S24_4_RJ_LE", "S24_3LE": "S24_3_LE",
+                   "S32_LE": "S32_LE", "FLOAT_LE": "F32_LE"}
+
+
+def loopback_rate(text):
+    """/proc/asound/Loopback/pcm0p/subN/hw_params -> rate, or None when closed."""
+    m = re.search(r"^rate:\s*(\d+)", text, re.M)
+    return int(m[1]) if m else None
+
+
+def loopback_params(text):
+    """hw_params -> (rate, CamillaDSP format) or None when closed."""
+    rate = loopback_rate(text)
+    if not rate:
+        return None
+    m = re.search(r"^format:\s*(\S+)", text, re.M)
+    return rate, CAMILLA_FORMATS.get(m[1] if m else "", "S32_LE")
+
+
+class LoopbackWatch:
+    """Every player writes into the loopback (Loopback,0); CamillaDSP reads the
+    other end and lets go of it when nothing plays (stop_on_inactive). Whoever
+    opens the loopback next sets the rate, this watcher sees it within 0.1 s and
+    restarts CamillaDSP at that rate: bit-perfect for every source, without
+    trusting each player to announce its rate before it opens the device."""
+
+    PATHS = [Path(f"/proc/asound/Loopback/pcm0p/sub{i}/hw_params") for i in range(2)]
+
+    def __init__(self, device, interval=0.1):
+        self.device = device
+        self.interval = interval
+        self.rate = None
+
+    def start(self):
+        asyncio.ensure_future(self._run())
+
+    def read(self):
+        for p in self.PATHS:
+            try:
+                params = loopback_params(p.read_text())
+            except OSError:
+                continue
+            if params:
+                return params
+        return None
+
+    def running(self):
+        """True while a player actually writes (not just holds the device open, paused)."""
+        for p in self.PATHS:
+            try:
+                if "RUNNING" in (p.parent / "status").read_text():
+                    return True
+            except OSError:
+                continue
+        return False
+
+    def check(self, params):
+        """params: (rate, format) of the player, or None when the loopback is closed."""
+        if params != self.rate:
+            self.rate = params
+            if params:
+                log.info("loopback opened at %s Hz, %s", *params)
+                self.device.loopback_opened(*params)
+
+    async def _run(self):
+        stuck = 0
+        while True:
+            try:
+                self.check(self.read())
+                # a player has the loopback open but CamillaDSP stopped (e.g. after an error):
+                # start it again instead of staying silent
+                cam = getattr(self.device.world, "camilla", None)
+                state = cam.state.get("state") if cam else None
+                stuck = stuck + 1 if self.rate and state in ("Inactive", "Stalled") and self.running() else 0
+                if stuck * self.interval >= 1.5:
+                    log.warning("CamillaDSP %s while the loopback is open: restarting", state)
+                    stuck = 0
+                    cam.state["state"] = None
+                    self.device.loopback_opened(*self.rate)
+            except Exception:  # noqa: BLE001
+                log.exception("loopback watch")
+            await asyncio.sleep(self.interval)
+
+
 class RealWorld:
     simulated = False
+    rate_from_loopback = True       # the rate is what the player opened the loopback with
+    factory_filter_dir = "/usr/share/aroio/filters"
     speed = 1.0
     fmax = 1000.0
     sweep_seconds = 6.0
@@ -314,7 +406,7 @@ class RealWorld:
         self.model = detect_model()
         self.board = detect_board()
         self.device = None
-        self.camilla = CamillaClient(camilla_url, on_rate_change=self._rate_changed)
+        self.camilla = CamillaClient(camilla_url)
         self.hw_volume = False
         self._cancel = False
         self._proc = None
@@ -327,9 +419,8 @@ class RealWorld:
     def audio_outputs(self):
         return list_outputs(read_cards(), self.device.config.get("hardware.dac_driver") if self.device else None)
 
-    def set_dac_driver(self, driver):
-        from .models import dac_driver_lines
-        self._spawn(self._write_boot_file("aroio.txt", "\n".join(dac_driver_lines(driver)) + "\n"))
+    def write_boot_config(self, lines):
+        self._spawn(self._write_boot_file("aroio.txt", "\n".join(lines) + "\n"))
 
     async def _write_boot_file(self, name, text):
         mnt = "/run/aroio/boot"
@@ -348,6 +439,18 @@ class RealWorld:
 
     def start(self):
         self.camilla.start()
+        self.sources_changed(self.device.config.get("sources"))
+        self.loopback = LoopbackWatch(self.device)
+        self.loopback.start()
+        from .inputs import InputReader
+        self.inputs = InputReader(self.device)
+        self.inputs.start()
+        from .airplay_meta import AirplayMeta
+        self.airplay = AirplayMeta(self.device)
+        self.airplay.start()
+        from .bt_watch import BluetoothWatch
+        self.bt_watch = BluetoothWatch(self.device)
+        self.bt_watch.start()
         self._spawn(self._bluetooth_start())
 
     async def _bluetooth_start(self):
@@ -402,7 +505,25 @@ class RealWorld:
 
     # ── sources ──
     def pause_source(self, sid):
-        log.info("pause %s (source control: phase 1)", sid)
+        """The previous source must let go of the loopback (all players write to
+        Loopback,0,0, CamillaDSP reads its other end): pause it where the protocol
+        can, otherwise end its session by restarting the player."""
+        log.info("pause %s", sid)
+        self._spawn(self._pause_source(sid))
+
+    async def _pause_source(self, sid):
+        if sid == "bluetooth":
+            await self.bt_watch.pause()                      # phone pauses (AVRCP)
+            await asyncio.sleep(0.5)
+            await _run("systemctl", "restart", "bluealsa-aplay.service")
+        elif sid == "airplay":
+            await _run("systemctl", "restart", "shairport-sync.service")   # ends the AirPlay session
+        elif sid == "spotify":
+            await _run("systemctl", "restart", "aroio-spotify.service")
+        elif sid == "upnp":
+            await _mpd("pause 1")
+        elif sid == "lms":
+            await _run("systemctl", "restart", "squeezelite.service")
 
     def resume_source(self, sid):
         log.info("resume %s (source control: phase 1)", sid)
@@ -414,13 +535,109 @@ class RealWorld:
         pass
 
     def sources_changed(self, sources):
+        """Start/stop the players to match the configuration. Runtime only (the root
+        file system is read-only): the units start at boot, aroiod stops the ones
+        that are switched off right after it starts."""
         for sid, unit in SOURCE_UNITS.items():
+            if sid == "roon":
+                continue                                   # not part of the image yet
             on = sources.get(sid, {}).get("enabled")
-            self._spawn(_run("systemctl", "enable" if on else "disable", "--now", unit))
+            self._spawn(_run("systemctl", "start" if on else "stop", unit))
+        self._write_lms_env(sources.get("lms", {}))
+
+    def _write_lms_env(self, lms):
+        """squeezelite finds the Lyrion server itself unless one is configured."""
+        server = lms.get("server") or ""            # player port 3483 (config "port" is the web port)
+        text = f"LMS_SERVER={'-s ' + server if server else ''}\n"
+        env = Path("/data/aroio/squeezelite.env")
+        if not env.exists() or env.read_text() != text:
+            env.parent.mkdir(parents=True, exist_ok=True)
+            env.write_text(text)
+            self._spawn(_run("systemctl", "try-restart", "squeezelite.service"))
 
     def rename(self, name):
+        """One name everywhere: AirPlay, Spotify, UPnP (EnvironmentFile), Bluetooth (alias)."""
+        env = Path("/data/aroio/names.env")
+        text = "AROIO_NAME=" + json.dumps(name) + "\n"
+        changed = not env.exists() or env.read_text() != text
+        if changed:
+            env.parent.mkdir(parents=True, exist_ok=True)
+            env.write_text(text)
         self._spawn(_output_ok("bluetoothctl", "system-alias", name))
-        log.info("rename to %s: AirPlay/UPnP names follow in phase 1", name)
+        if changed:
+            self._spawn(_output_ok("systemctl", "try-restart", "shairport-sync.service", "aroio-spotify.service", "upmpdcli.service"))
+
+    def test_noise(self, channel):
+        task = getattr(self, "_noise", None)
+        if task and not task.done():
+            task.cancel()
+        if channel:
+            self._noise = asyncio.ensure_future(self._noise_loop(channel))
+
+    async def _noise_loop(self, channel, minutes=5):
+        from .sim import pink_noise
+        noise = pink_noise(48000 * 4)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "noise.wav"
+            write_wav(path, stereo(noise, channel), channels=2)
+            t0 = time.monotonic()
+            try:
+                while time.monotonic() - t0 < minutes * 60:
+                    proc = await asyncio.create_subprocess_exec("aplay", "-q", "-D", LOOPBACK_PLAY, str(path))
+                    try:
+                        await proc.wait()
+                    except asyncio.CancelledError:
+                        proc.terminate()
+                        raise
+            except asyncio.CancelledError:
+                pass
+
+    def cover(self, provider):
+        if provider == "airplay" and getattr(self, "airplay", None):
+            return self.airplay.cover()
+        return None
+
+    def licenses(self):
+        try:
+            return json.loads(Path("/usr/share/aroio/licenses.json").read_text())
+        except (OSError, ValueError):
+            from .sim import LICENSES
+            return LICENSES
+
+    UNITS = {"system": [], "audio": ["camilladsp", "aroiod"], "lyrion": ["squeezelite"], "airplay": ["shairport-sync", "nqptp"],
+             "spotify": ["aroio-spotify"], "bluetooth": ["bluetooth", "bluealsa", "bluealsa-aplay", "aroio-bt-agent"],
+             "network": ["iwd", "systemd-networkd", "aroio-hotspot", "aroio-portal-dns"]}
+
+    def logs(self, unit):
+        if unit == "kernel":
+            out = subprocess.run(["dmesg"], capture_output=True, text=True, timeout=5).stdout
+            return out.splitlines()[-300:]
+        if unit not in self.UNITS:
+            raise KeyError(unit)
+        cmd = ["journalctl", "-b", "--no-pager", "-n", "300", "-o", "short"]
+        for u in self.UNITS[unit]:
+            cmd += ["-u", u]
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.splitlines()
+
+    def diagnostics_files(self):
+        """Extra files for the diagnosis package (like aroio_prepare_logs in 5.1)."""
+        out = {}
+        for unit in self.UNITS:
+            try:
+                out[f"logs/{unit}.txt"] = "\n".join(self.logs(unit))
+            except Exception as exc:  # noqa: BLE001
+                out[f"logs/{unit}.txt"] = str(exc)
+        out["logs/kernel.txt"] = "\n".join(self.logs("kernel"))
+        for name, cmd in (("audio/cards.txt", ["cat", "/proc/asound/cards"]), ("audio/hw_params.txt",
+                          ["aplay", "--duration=1", "-D", self.dac_device, "--dump-hw-params", "/dev/zero"]),
+                          ("system/ip.txt", ["ip", "addr"]), ("system/failed.txt", ["systemctl", "--failed", "--no-pager"]),
+                          ("system/boot-time.txt", ["systemd-analyze"])):
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                out[name] = r.stdout + r.stderr
+            except (OSError, subprocess.SubprocessError) as exc:
+                out[name] = str(exc)
+        return out
 
     def test_tone(self, channel):
         t = np.arange(int(1.5 * 48000)) / 48000
@@ -451,8 +668,9 @@ class RealWorld:
         if not cfg["sources"]["lms"]["enabled"]:
             return {"mode": "off", "server": None, "status": "off", "enabled": False}
         server = cfg["sources"]["lms"]["server"]
+        port = cfg["sources"]["lms"]["port"]
         return {"mode": "external" if server else "none", "server": server or None,
-                "status": "connected" if server else "not_found"}
+                "status": "connected" if server else "not_found", "web": f"http://{server}:{port}/" if server else None}
 
     # ── network ──
     def network_status(self, cfg):
@@ -461,9 +679,10 @@ class RealWorld:
         wifi = addrs.get("wlan0")
         if wifi == HOTSPOT_IP:
             wifi = None
-        return {"lan": {"connected": bool(lan), "address": lan, "dhcp": cfg["network"]["lan"]["dhcp"], "speed": None},
+        return {"lan": {"connected": bool(lan), "address": lan, "dhcp": cfg["network"]["lan"]["dhcp"], "speed": None,
+                        "mac": _mac("eth0") or _mac("end0")},
                 "wifi": {"connected": bool(wifi), "ssid": cfg["network"]["wifi"]["ssid"] or None, "address": wifi,
-                         "signal": None, "enabled": cfg["network"]["wifi"]["enabled"]},
+                         "signal": None, "enabled": cfg["network"]["wifi"]["enabled"], "mac": _mac(WLAN)},
                 "internet": bool(lan or wifi), "hostname": cfg["network"]["hostname"]}
 
     def network_apply(self, net):
@@ -560,6 +779,10 @@ class RealWorld:
                 await _output_ok("bluetoothctl", "discoverable", "off")
             self.device.publish_bluetooth()
         self._spawn(run())
+
+    def bt_remove_all(self):
+        for d in self.bt_devices:
+            self.bt_remove(d["address"])
 
     def bt_remove(self, address):
         if not re.fullmatch(r"[0-9A-F:]{17}", address):
@@ -707,6 +930,13 @@ def parse_iw_scan(text):
     return sorted(nets.values(), key=lambda n: -n["signal"])
 
 
+def _mac(iface):
+    try:
+        return Path(f"/sys/class/net/{iface}/address").read_text().strip()
+    except OSError:
+        return None
+
+
 def _carrier(iface):
     try:
         return Path(f"/sys/class/net/{iface}/carrier").read_text().strip() == "1"
@@ -758,6 +988,19 @@ def parse_ip_addr(text):
         if m and iface and iface != "lo" and iface not in out:
             out[iface] = m[1]
     return out
+
+
+async def _mpd(command):
+    """One command to the local MPD (UPnP renderer behind upmpdcli)."""
+    try:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", 6600), 2)
+        await reader.readline()
+        writer.write(command.encode() + b"\n")
+        await writer.drain()
+        await asyncio.wait_for(reader.readline(), 2)
+        writer.close()
+    except (OSError, asyncio.TimeoutError) as exc:
+        log.debug("mpd %s: %s", command, exc)
 
 
 async def _run(*cmd):

@@ -404,3 +404,55 @@ Phase 2 und 3 können teilweise parallel laufen (Simulator), sobald die API aus 
 2. Echte `World`-Implementierung (gleiche Schnittstelle wie `sim.SimWorld`): CamillaDSP-WebSocket, Lyrion JSON-RPC/Comet (`LyrionLibrary` mit dem Modell aus `library.py`), BlueZ/iwd über D-Bus, RAUC, evdev für Drehgeber/IR, ALSA-Messung für die Raumkorrektur.
 3. Fehlermeldungen des Servers als Codes, damit sie in der englischen App übersetzt erscheinen (heute deutscher Text).
 4. Hardware-Belegung anlernen (Tasten, IR) im Expertenmodus.
+
+---
+
+## 13. Abgleich mit AroioOS 5.1.0 (Image vom 03.12.2021)
+
+Untersucht: Boot-Partition und Root-Dateisystem (initramfs im zImage). Das Webinterface und die
+Aroio-Skripte von 5.1 sind identisch mit `aroio-ng` (bis auf `checkupdate` und Restdateien),
+die Funktionsliste in Abschnitt 2 war also vollständig. Noch fehlend oder nur teilweise im Neubau:
+
+| Funktion in 5.1 | Stand Neubau (14.11.2026) |
+|---|---|
+| Werksfilter `filter.tgz`: BypassFilter, **BBCDip**, Echo für 44,1–192 kHz | erledigt: BBC-Dip und Echo als feste Klangeinstellungen (`werk-*`, `/usr/share/aroio/filters`), Migration ordnet `LOAD_PREFILTER` zu |
+| Pegel/Verzögerung pro Filterbank (`COEFF_ATT`, `COEFF_DELAY`) | erledigt: „Pegel und Laufzeit“ je Klangeinstellung (Experten), FIR und EQ |
+| Stummschalten | erledigt: Lautsprecher-Symbol am Lautstärkeregler, Taste der Fernbedienung |
+| Messung: Rauschen, Cleaner während der Messung | erledigt: rosa Rauschen L/R/beide (Experten, Gerät > Lautsprecher prüfen); Messung ohne Korrektur, aber mit Cleaner, bei 0 dB |
+| Messaufnahme für Audiovero/Acourate | erledigt: Rohaufnahmen + Sweep als 32-bit-float-WAV (ZIP) im Ergebnis der Raumkorrektur |
+| Höchste Abtastrate des Wandlers | erledigt: Ton (Experten), höhere Raten gehen auf das höchste Vielfache derselben Familie |
+| LMS-Zugangsdaten, Link „LMS Webinterface“ | erledigt: Dienste > Lyrion |
+| Plattform wählen | erledigt: Hardware (Experten), schreibt Drehgeber/Taste/IR/Display-Drehung in `aroio.txt` |
+| Passwort für das Webinterface | erledigt: Allgemein > App-Passwort (scrypt, Sitzungscookie, Anmeldeseite) |
+| „Log senden“ | in 5.1 ein Download-Paket, wie bei uns; Diagnose-Paket enthält jetzt Protokolle aller Dienste |
+| MAC-Adressen, Link-Status | erledigt: Netzwerk und „Über diesen Aroio“ |
+| Alle Bluetooth-Kopplungen löschen | erledigt |
+| Credits/Lizenzen | erledigt: Lizenzseite aus Buildroot `show-info`, ABACUS-Links (Forum, Produktseite, TeamViewer) |
+| Infoscreen, Display-Drehung | erledigt: `aroio-infoscreen` auf tty1 (Terminus 16×32) |
+| IR-Fernbedienung, Drehgeber, Pause-Taste | erledigt: rc-core + evdev (`inputs.py`), Aroio-Fernbedienung (RC5) vorbelegt, Anlernen in der App |
+| Spotify | erledigt: librespot 0.8.0 (Zeroconf, Titel/Cover/Lautstärke über `spotify-event`); Soloist bleibt offen |
+| NetJack | **offene Entscheidung**: im Neubau nicht enthalten. Line In vorhanden |
+
+**Größe:** 5.1 ist 170 MB (FAT mit 81-MB-zImage, System komplett im RAM). Unser Image ist 1,27 GB, davon
+sind die Partitionen A/B je 512 MB und Daten 64 MB großteils leer; das System selbst ist ein 134-MB-squashfs,
+komprimiert zum Download (`.img.xz`) 143 MB. Größte Brocken (unkomprimiert): scipy 99 MB, Kernel-Module
+109 MB, numpy 38 MB. Sparpotenzial: scipy durch eigene numpy-Funktionen ersetzen (spart auch den
+Fortran-Compiler im Build), Kernel-Module auf die benötigten reduzieren, A/B-Partitionen auf 256 MB,
+Datenpartition wächst beim ersten Start auf die Kartengröße.
+
+**Umgesetzt (14.11.2026):** scipy ersetzt (FFT-Faltung und begrenzter Levenberg-Marquardt in numpy),
+Partitionen Boot 64 MB / A und B je 256 MB / Daten 64 MB, die beim ersten Start auf die Kartengröße
+wächst (`aroio-grow-data` + `x-systemd.growfs`), Kernel ohne Video/DVB, CAN, IIO, RAID, SATA, 1-Wire und
+seltene WLAN-Chips, Download als `aroio-sdcard.img.xz`.
+
+**Auf dem Gerät gefunden und behoben:** AirPlay und Bluetooth blieben stumm, weil CamillaDSP die
+Loopback festhielt und dem Player Rate und Format vorgab (`set_rate`/`set_format failed`). Jetzt gibt
+CamillaDSP die Loopback frei, wenn nichts spielt (`stop_on_inactive`), und aroiod startet es mit Rate
+und Format des Players neu (`real.LoopbackWatch`), bitgenau für alle Quellen. bluealsa-aplay brach
+ohne Mixer ab (`--volume=none`), wurde vor BlueALSA gestartet und meldete nichts an aroiod
+(`bt_watch.py`). AirPlay-Titel/Cover/Lautstärke über die Metadaten-Pipe (`airplay_meta.py`). SSH-Hostschlüssel
+lagen im RAM (bei jedem Boot neu) und liegen jetzt auf `/data/dropbear`. squeezelite hatte keine Unit.
+
+**Offen:** RAUC aktualisiert nur das Root-Dateisystem; Kernel und Device-Tree liegen auf der gemeinsamen
+Boot-Partition. Ein Update mit neuem Kernel braucht A/B-Bootdateien (tryboot) – vor dem ersten
+Kernel-Update lösen.

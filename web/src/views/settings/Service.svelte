@@ -21,6 +21,12 @@
     catch (e) { err = e.message; } finally { busy = false; }
   }
   const logout = () => api.post(`/services/${id}/logout`).then(() => toast(t('Abgemeldet.'))).catch((e) => toast(e.message, 'danger'));
+  let luser = $state(''), lpass = $state('');
+  async function saveCred(e) {
+    e?.preventDefault();
+    try { await api.post('/services/lyrion/credentials', { user: luser, password: lpass }); lpass = ''; toast(t('Gespeichert.'), 'ok'); }
+    catch (err) { toast(err.message, 'danger'); }
+  }
 </script>
 
 <div class="page">
@@ -102,6 +108,7 @@
         {:else}
           <p class="notice warn">{t('Es wurde kein Lyrion-Server im Netzwerk gefunden.')}</p>
         {/if}
+        {#if l.web}<a class="btn" href={l.web} target="_blank" rel="noopener">{t('Lyrion-Oberfläche öffnen')}</a>{/if}
         <p class="muted">{t('Lyrion (früher Logitech Media Server) verwaltet deine Musiksammlung. Die App zeigt sie unter Musik. Die TIDAL- und Qobuz-Anbindung läuft ebenfalls darüber.')}</p>
         <Segmented legend={t('Musikserver auf diesem Aroio')} value={local}
           options={[{ value: 'auto', label: t('Automatisch') }, { value: 'on', label: t('Immer') }, { value: 'off', label: t('Nie') }]}
@@ -112,6 +119,16 @@
           <div class="row"><input id="lsrv" class="input mono" bind:value={server} placeholder="192.168.1.10" autocomplete="off" /><button class="btn" type="submit">{t('Speichern')}</button></div>
           <span class="hint">{t('Leer lassen, damit der Aroio den Server selbst findet.')}</span>
         </form>
+        {#if app.topics.device?.expert_mode}
+          <form class="stack cred" onsubmit={saveCred} aria-labelledby="lcred-h">
+            <h2 id="lcred-h" class="section-title">{t('Anmeldung am Server')}</h2>
+            <p class="muted small">{l.protected ? t('Angemeldet als {u}.', { u: l.user }) : t('Nur nötig, wenn der Lyrion-Server mit Passwort geschützt ist.')}</p>
+            <div class="field"><label for="lu">{t('Benutzername')}</label><input id="lu" class="input" bind:value={luser} autocomplete="username" /></div>
+            <div class="field"><label for="lp">{t('Passwort')}</label><input id="lp" class="input" type="password" bind:value={lpass} autocomplete="current-password" /></div>
+            <div class="row wrap"><button class="btn" type="submit">{t('Speichern')}</button>
+              {#if l.protected}<button class="btn" type="button" onclick={() => { luser = ''; lpass = ''; saveCred(); }}>{t('Anmeldung entfernen')}</button>{/if}</div>
+          </form>
+        {/if}
       </div>
       {/if}
     {/if}
@@ -125,4 +142,6 @@
   .howto a { display: inline-flex; gap: 4px; align-items: center; font-weight: 600; }
   .code { font-family: var(--mono); font-size: 2.25rem; letter-spacing: .25em; font-weight: 700; text-align: center; padding: 8px; background: var(--surface-2); border-radius: 12px; }
   .btn { align-self: flex-start; }
+  .cred { margin-top: 8px; }
+  .wrap { flex-wrap: wrap; }
 </style>

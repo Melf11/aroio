@@ -3,6 +3,7 @@
 
 export const app = $state({
   connected: false,
+  needLogin: false,
   everConnected: false,
   rebooting: false,
   rebootSince: 0,
@@ -58,7 +59,19 @@ function rebootDone(oldVersion) {
   }, 1500);
 }
 
-export function connect() {
+async function loginNeeded() {
+  try {
+    const r = await fetch('/api/v1/auth/status');
+    if (!r.ok) return false;
+    const s = await r.json();
+    return s.enabled && !s.logged_in;
+  } catch { return false; }
+}
+
+export async function connect() {
+  if (ws && ws.readyState <= 1) return;
+  if (await loginNeeded()) { app.needLogin = true; return; }
+  app.needLogin = false;
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);

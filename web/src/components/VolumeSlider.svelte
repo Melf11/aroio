@@ -18,6 +18,7 @@
       setTimeout(() => (local = null), 300);
     }, 80);
   }
+  const toggleMute = () => player('mute', { on: !muted }).catch((e) => toast(e.message, 'danger'));
   const step = (d) => send(Math.max(0, Math.min(limit, shown + d)));
 </script>
 
@@ -25,9 +26,9 @@
   {#if !compact}
     <button class="icon-btn" type="button" onclick={() => step(-5)} aria-label={t('Leiser')}><Minus aria-hidden="true" /></button>
   {/if}
-  <span class="icon" aria-hidden="true">
-    {#if muted || shown === 0}<VolumeX size={20} />{:else if shown < 50}<Volume1 size={20} />{:else}<Volume2 size={20} />{/if}
-  </span>
+  <button class="icon-btn mute" class:on={muted} type="button" onclick={toggleMute} aria-pressed={muted} aria-label={t('Stumm')}>
+    {#if muted || shown === 0}<VolumeX size={20} aria-hidden="true" />{:else if shown < 50}<Volume1 size={20} aria-hidden="true" />{:else}<Volume2 size={20} aria-hidden="true" />{/if}
+  </button>
   <input type="range" min="0" max="100" step="1" value={shown} aria-label={t('Lautstärke')}
          aria-valuetext={t('{v} Prozent', { v: shown })}
          style="--p:{shown}%"
@@ -40,7 +41,8 @@
 
 <style>
   .vol { display: flex; align-items: center; gap: 6px; width: 100%; }
-  .icon { color: var(--text-2); }
+  .mute { color: var(--text-2); flex: none; }
+  .mute.on { color: var(--danger-ink, var(--danger)); }
   output { width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-2); }
   input[type=range] { flex: 1; min-width: 0; height: var(--tap); background: transparent; -webkit-appearance: none; appearance: none; margin: 0; }
   input[type=range]::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, var(--brand) var(--p), var(--surface-3) var(--p)); border: 1px solid var(--border-strong); }

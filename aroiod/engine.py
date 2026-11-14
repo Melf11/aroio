@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 
 from . import dsp, models
-from .config import Config, Invalid
+from .config import RATES, Config, Invalid
 from .library import PROVIDERS, SimLibrary
 from .store import Secrets, atomic_write_bytes
 
@@ -68,6 +68,8 @@ class Device:
         self.muted = False
         self.compare_bypass = False
         self.rate = 48000
+        self.capture_format = "S32_LE"
+        self.source_meta = {}       # last meta per outside source (may arrive before "start")
         self.dsp_status = {}
         self._end_task = None
         self.update = {"current": VERSION, "available": None, "state": "idle", "progress": 0,
@@ -76,11 +78,24 @@ class Device:
         self.reboot_required = False
         self.wizard = None          # set by app (wizard.RoomWizard)
         self.netsetup = None        # set by app (netsetup.NetSetup)
+        self.levels = None          # set by app (levels.Levels)
+        self.measuring = False      # room measurement: correction off, Cleaner kept, 0 dB
+        self._ir_learn = None       # Future while teaching a remote key
+        self.last_ir = None
+        self.factory_dir = self._factory_filters()
+        self._ensure_factory_presets()
+        from .auth import Auth
+        self.auth = Auth(self)
 
     # ── helpers ──────────────────────────────────────────────────────────────
     @property
+    def model_id(self):
+        chosen = self.config.get("hardware.model")
+        return chosen if chosen in models.MODELS else self.world.model
+
+    @property
     def model(self):
-        return models.MODELS[self.world.model]
+        return models.MODELS[self.model_id]
 
     @property
     def fixed_level(self):
@@ -100,6 +115,7 @@ class Device:
         if self.netsetup:
             self.netsetup.start()
         self.world.set_volume(0.0 if self.fixed_level else volume_db(self.volume))
+        self.world.rename(self.config.get("device.name"))
         self.publish_all()
         self.apply_dsp()
 
@@ -123,7 +139,9 @@ class Device:
             "name": c["device"]["name"], "hostname": c["network"]["hostname"],
             "language": c["device"]["language"], "theme": c["device"]["theme"],
             "expert_mode": c["device"]["expert_mode"],
-            "model": self.world.model, "model_label": self.model["label"],
+            "model": self.model_id, "model_label": self.model["label"],
+            "model_detected": self.world.model,
+            "models": [{"id": k, "label": m["label"]} for k, m in models.MODELS.items()],
             "board": self.world.board, "board_label": board["label"],
             "fixed_level": self.fixed_level, "has_input": self.model["has_input"] or c["sources"]["input"]["enabled"],
             "version": VERSION, "setup_completed": c["setup"]["completed"],
@@ -192,7 +210,8 @@ class Device:
                       "account": self.secrets.get("tidal.account"), "login": self.world.pending_login("tidal")},
             "qobuz": {"enabled": c["services"]["qobuz"]["enabled"], "logged_in": self._logged_in("qobuz"),
                       "account": self.secrets.get("qobuz.account")},
-            "lyrion": self.world.lyrion_status(c),
+            "lyrion": dict(self.world.lyrion_status(c), protected=self.secrets.has("lms.user"),
+                           user=self.secrets.get("lms.user")),
             "airplay": {"enabled": c["sources"]["airplay"]["enabled"]},
             "upnp": {"enabled": c["sources"]["upnp"]["enabled"]},
             "roon": {"enabled": c["sources"]["roon"]["enabled"]},
@@ -220,7 +239,7 @@ class Device:
     # ── signal path ──────────────────────────────────────────────────────────
     def active_preset(self):
         d = self.config.data["dsp"]
-        if not d["enabled"] or self.compare_bypass:
+        if not d["enabled"] or self.compare_bypass or self.measuring:
             return dsp_bypass()
         return next((p for p in d["presets"] if p["id"] == d["active_preset"]), dsp_bypass())
 
@@ -232,6 +251,14 @@ class Device:
         fixed = c["audio"]["rate_mode"] == "fixed"
         rate_out = c["audio"]["fixed_rate"] if fixed else rate_in
         note = None
+        max_rate = c["audio"]["max_rate"]
+        if rate_out > max_rate:
+            # highest rate the DAC takes, same family if possible (44.1k / 48k multiples)
+            allowed = [r for r in sorted(RATES) if r <= max_rate]
+            family = [r for r in allowed if (r % 44100 == 0) == (rate_out % 44100 == 0)] or allowed
+            rate_out = max(family)
+            note = "max_rate"
+        fir_dir = self.preset_dir(preset)
         if preset["kind"] == "fir":
             have = sorted(int(r) for r in preset.get("fir", {}))
             if rate_out not in have:
@@ -242,23 +269,25 @@ class Device:
         try:
             cfg = dsp.camilla_config(
                 preset, rate_out, ms_cleaner=c["dsp"]["ms_cleaner"] and c["dsp"]["enabled"],
-                fir_dir=str(self.data / "filters"), playback=self.world.dac_device,
+                fir_dir=str(fir_dir), playback=self.world.dac_device,
                 capture_rate=rate_in if rate_in != rate_out else None, resampler=c["audio"]["resampler"],
-                chunksize=c["audio"]["chunksize"] or None, target_level=c["audio"]["target_level"] or None)
+                chunksize=c["audio"]["chunksize"] or None, target_level=c["audio"]["target_level"] or None,
+                release_capture=self.world.rate_from_loopback, capture_format=self.capture_format)
         except dsp.MissingRate:
             cfg = dsp.camilla_config(dsp_bypass(), rate_in, playback=self.world.dac_device)
             note = "error"
         self.world.camilla_apply(cfg)
         taps = 0
         if preset["kind"] == "fir":
-            taps = self.world.fir_taps(self.data / "filters", preset, rate_out)
+            taps = self.world.fir_taps(fir_dir, preset, rate_out)
         limit = models.fir_limit(self.world.board, rate_out)
         self.dsp_status = {"rate_in": rate_in, "rate_out": rate_out, "resampled": rate_in != rate_out,
                            "pipeline_empty": dsp.is_bit_perfect(cfg),
                            "processing": bool(cfg["pipeline"]), "note": note,
                            "preset": preset["name"], "fir_taps": taps,
                            "too_heavy": bool(taps and taps > limit), "fir_limit": limit,
-                           "load": self.world.dsp_load(cfg, taps)}
+                           "load": self.world.dsp_load(cfg, taps), "measuring": self.measuring,
+                           "recordings": (self.data / "measurements" / "last" / "info.txt").exists()}
         self.publish_dsp()
         self.publish_player()
         return cfg
@@ -276,6 +305,20 @@ class Device:
             self.fixed_level or self.volume >= 100 or self.world.hw_volume) and fmt.get("codec") not in ("MP3", "AAC", "OGG")
         return dict(self.dsp_status, codec=fmt.get("codec"), bits=fmt.get("bits"), bit_perfect=bit_perfect,
                     source_rate=fmt.get("rate"), cleaner=self.config.get("dsp.ms_cleaner"))
+
+    def loopback_opened(self, rate, fmt="S32_LE"):
+        """A player opened the loopback at this rate and sample format (device):
+        CamillaDSP stopped when the previous one closed it and starts again with
+        exactly these parameters."""
+        self.rate = 176400 if int(rate) > 192000 else int(rate)
+        self.capture_format = fmt
+        self.apply_dsp()
+
+    def remote_volume(self, percent):
+        """Volume from the sending device (iPhone over AirPlay, phone over Bluetooth)."""
+        if self.fixed_level:
+            return
+        self.set_volume(value=max(0, min(int(round(percent)), self.config.get("audio.volume_limit", 100))))
 
     def set_rate(self, rate):
         rate = int(rate)
@@ -305,7 +348,7 @@ class Device:
             self.meta = meta
             self.pos_base, self.started_at = 0.0, time.monotonic()
             self.state = "playing"
-        if rate:
+        if rate and not self.world.rate_from_loopback:
             self.set_rate(rate)
         self.publish_player()
         self.publish_sources()
@@ -319,10 +362,13 @@ class Device:
             self.publish_sources()
 
     def external_meta(self, sid, meta):
+        self.source_meta[sid] = meta
         if self.source == sid:
+            meta = dict(meta)
             self.meta = meta
-            self.pos_base, self.started_at = 0.0, time.monotonic() if self.state == "playing" else None
-            if meta.get("format", {}).get("rate"):
+            pos = meta.pop("position", None) or 0.0
+            self.pos_base, self.started_at = pos, time.monotonic() if self.state == "playing" else None
+            if meta.get("format", {}).get("rate") and not self.world.rate_from_loopback:
                 self.set_rate(meta["format"]["rate"])
             self.publish_player()
 
@@ -563,8 +609,9 @@ class Device:
         if "network" in changed:
             self.world.network_apply(after["network"])
             self.publish_network()
-        if "hardware" in changed and after["hardware"]["dac_driver"] != before["hardware"]["dac_driver"]:
-            self.world.set_dac_driver(after["hardware"]["dac_driver"])
+        boot_keys = ("dac_driver", "model", "display_rotate", "ir_enabled")
+        if "hardware" in changed and any(after["hardware"][k] != before["hardware"][k] for k in boot_keys):
+            self.write_boot_config()
             self.reboot_required = True
         if "hardware" in changed or "device" in changed or "setup" in changed:
             self.publish_device()
@@ -587,8 +634,8 @@ class Device:
         self.patch_config(patch)
 
     def delete_preset(self, pid):
-        if pid == "bypass":
-            raise ValueError("„Ohne Korrektur“ kann nicht gelöscht werden.")
+        if pid == "bypass" or pid.startswith("werk-"):
+            raise ValueError("Fest eingebaute Klangeinstellungen können nicht gelöscht werden.")
         presets = self.config.data["dsp"]["presets"]
         target = next((p for p in presets if p["id"] == pid), None)
         if not target:
@@ -642,7 +689,7 @@ class Device:
             elif p["kind"] == "fir":
                 rate = sorted(int(r) for r in p["fir"])[0]
                 import numpy as np
-                path = self.data / "filters" / p["fir"][str(rate)][ch]
+                path = self.preset_dir(p) / p["fir"][str(rate)][ch]
                 taps = np.fromfile(path, dtype="<f8") if path.exists() else np.array([1.0])
                 db = dsp.fir_response_db(taps, freqs, rate)
             else:
@@ -687,6 +734,119 @@ class Device:
         self.reboot_required = False
         self.apply_dsp()
         self.publish_device()
+
+    # ── factory filters (ABACUS, from AroioOS 5.1: BBC-Dip, Echo) ─────────────
+    FACTORY_PRESETS = [("werk-bbcdip", "BBC-Dip", "BBCDip"), ("werk-echo", "Echo", "Echo")]
+
+    def _factory_filters(self):
+        """Device: /usr/share/aroio/filters (aroio-filters package). Development: the
+        archive in the repository, unpacked once into the data directory."""
+        dev = getattr(self.world, "factory_filter_dir", None)
+        if dev and Path(dev).is_dir():
+            return Path(dev)
+        target = self.data / "factory-filters"
+        archive = Path(__file__).parent / "factory" / "filter.tgz"
+        if not target.is_dir() and archive.exists():
+            import tarfile
+            tmp = self.data / "factory-filters.tmp"
+            tmp.mkdir(exist_ok=True)
+            with tarfile.open(archive) as tar:
+                for m in tar.getmembers():
+                    name = Path(m.name).name
+                    # the right channels are symlinks to the left ones in the 5.1 archive
+                    if (m.isfile() or m.issym() or m.islnk()) and name.endswith(".dbl") and not name.startswith("Bypass"):
+                        (tmp / name).write_bytes(tar.extractfile(m).read())
+            tmp.rename(target)
+        return target
+
+    def _ensure_factory_presets(self):
+        from .migration import RATE_TOKENS
+        presets = self.config.data["dsp"]["presets"]
+        have = {p["id"] for p in presets}
+        added = []
+        for pid, name, base in self.FACTORY_PRESETS:
+            if pid in have:
+                continue
+            fir = {}
+            for tok, rate in RATE_TOKENS.items():
+                l_, r_ = f"{base}L{tok}.dbl", f"{base}R{tok}.dbl"
+                if (self.factory_dir / l_).exists() and (self.factory_dir / r_).exists():
+                    fir[str(rate)] = {"L": l_, "R": r_}
+            if fir:
+                added.append({"id": pid, "name": name, "kind": "fir", "origin": "builtin", "fir": fir})
+        if added:
+            self.config.patch({"dsp": {"presets": presets + added}})
+
+    def preset_dir(self, preset):
+        return self.factory_dir if preset.get("origin") == "builtin" and preset["id"].startswith("werk-") \
+            else self.data / "filters"
+
+    # ── boot configuration (aroio.txt): driver, model controls, display rotation ──
+    def write_boot_config(self):
+        hw = self.config.data["hardware"]
+        self.world.write_boot_config(models.boot_lines(hw["dac_driver"], self.model_id, hw["display_rotate"],
+                                                       ir=hw["ir_enabled"]))
+
+    # ── room measurement mode ────────────────────────────────────────────────
+    def begin_measurement(self):
+        """Measure the room as it is: no correction, but the Cleaner stays (speakers with
+        Cleaner expect M/S), volume at 0 dB (the level check finds the measuring level)."""
+        if self.measuring:
+            return
+        self.pause()
+        self.measuring = True
+        self.world.set_volume(0.0)
+        self.rate = 48000
+        self.apply_dsp()
+
+    def end_measurement(self):
+        if not self.measuring:
+            return
+        self.measuring = False
+        self.world.set_volume(0.0 if self.fixed_level else volume_db(0 if self.muted else self.volume))
+        self.apply_dsp()
+
+    # ── remote control (rc-core scancodes) ───────────────────────────────────
+    def on_ir(self, scancode):
+        code = hex(int(scancode))
+        self.last_ir = code
+        if self._ir_learn and not self._ir_learn.done():
+            self._ir_learn.set_result(code)
+            return True
+        action = self.config.get("hardware.ir_map", {}).get(code)
+        if action and self.config.get("hardware.ir_enabled"):
+            return self.on_key(action)
+        return False
+
+    async def learn_ir(self, action, timeout=15.0):
+        if action not in models.IR_ACTIONS:
+            raise ValueError("Unbekannte Funktion")
+        loop = asyncio.get_event_loop()
+        self._ir_learn = loop.create_future()
+        try:
+            code = await asyncio.wait_for(self._ir_learn, timeout)
+        except asyncio.TimeoutError:
+            raise ValueError("Keine Taste empfangen. Bitte auf die Fernbedienung drücken, solange „Anlernen“ läuft.") from None
+        finally:
+            self._ir_learn = None
+        ir_map = {c: a for c, a in self.config.get("hardware.ir_map", {}).items() if a != action}
+        ir_map[code] = action
+        self.patch_config({"hardware": {"ir_map": ir_map}})
+        return code
+
+    # ── misc device functions ────────────────────────────────────────────────
+    def test_noise(self, channel):
+        """Pink noise for setting up speakers and levels (None stops it)."""
+        if channel not in (None, "L", "R", "both"):
+            raise ValueError(channel)
+        if channel:
+            self.pause()
+        self.world.test_noise(channel)
+
+    def set_lyrion_credentials(self, user, password):
+        self.secrets.set("lms.user", (user or "").strip() or None)
+        self.secrets.set("lms.password", password or None)
+        self.publish_services()
 
     def test_tone(self, channel):
         if channel not in ("L", "R", "both"):
@@ -736,8 +896,12 @@ class Device:
                 atomic_write_bytes(self.data / "filters" / c["to"], data)
         for key, value in m["secrets"].items():
             self.secrets.set(key, value)
-        patch = dict(m["patch"])
+        patch = {k: (dict(v) if isinstance(v, dict) else v) for k, v in m["patch"].items()}
         patch.setdefault("setup", {})["completed"] = False
+        if "presets" in patch.get("dsp", {}):
+            # keep the built-in ones (bypass, factory filters), add the old filter banks
+            builtin = [p for p in self.config.data["dsp"]["presets"] if p.get("origin") == "builtin"]
+            patch["dsp"]["presets"] = builtin + [p for p in patch["dsp"]["presets"] if p["id"] not in {b["id"] for b in builtin}]
         self.patch_config(patch)
         self.volume = self.config.get("audio.start_volume")
         m["state"] = "applied"

@@ -3,6 +3,5 @@ config BR2_PACKAGE_AROIOD
 	depends on BR2_PACKAGE_PYTHON3
 	select BR2_PACKAGE_PYTHON_AIOHTTP
 	select BR2_PACKAGE_PYTHON_NUMPY
-	select BR2_PACKAGE_PYTHON_SCIPY
 	help
 	  Aroio control service: API, playback, DSP, room correction.

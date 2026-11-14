@@ -39,11 +39,15 @@ image: buildroot
 	$(MAKE) -C $(BR_DIR) BR2_EXTERNAL=$(CURDIR)/br2-external O=$(OUT) aroio_rpi_defconfig
 	$(MAKE) -C $(OUT) host-rust-bin
 	HOST_DIR=$(OUT)/host tools/vendor-camilladsp.sh
+	# package list with licenses for the app (aroiod.mk turns it into licenses.json)
+	$(MAKE) -s -C $(OUT) show-info > $(OUT)/show-info.json
 	# our own packages and the boot files (config.txt, cmdline.txt) come from this repository: fresh on every build
 	$(MAKE) -C $(OUT) aroiod-dirclean aroio-web-dirclean rpi-firmware-dirclean
 	$(MAKE) -C $(OUT)
 	mkdir -p $(COPY_TO)
 	cp $(OUT)/images/sdcard.img $(COPY_TO)/aroio-sdcard.img
+	# download size: xz shrinks the empty space in the partitions to almost nothing
+	xz -T0 -6 -k -f $(COPY_TO)/aroio-sdcard.img
 	cp $(OUT)/images/aroio-*.raucb $(COPY_TO)/ 2>/dev/null || true
 	@echo "Fertig: $(COPY_TO)/aroio-sdcard.img"
 

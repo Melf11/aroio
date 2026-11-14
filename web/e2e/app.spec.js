@@ -18,7 +18,8 @@ async function axe(page, name) {
 const ROUTES = ['/', '/musik', '/musik/b?path=local/albums', '/musik/b?path=local/album/3', '/musik/suche?q=licht', '/warteschlange',
   '/klang', '/einstellungen', '/einstellungen/allgemein', '/einstellungen/netzwerk', '/einstellungen/dienste',
   '/einstellungen/dienste/spotify', '/einstellungen/dienste/tidal', '/einstellungen/dienste/qobuz', '/einstellungen/dienste/lyrion',
-  '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet'];
+  '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet', '/einstellungen/lizenzen',
+  '/klang/preset/werk-bbcdip'];
 const EXPERT = ['/einstellungen/ton', '/einstellungen/hardware', '/einstellungen/system', '/klang/import'];
 
 test('alle Seiten ohne Barrierefreiheits-Verstöße (hell und dunkel)', async ({ page, request }, info) => {
@@ -210,4 +211,50 @@ test('Einrichtung: anderer DAC verlangt Neustart, Neustart mit Fortschritt', asy
   const s = await (await api(request, '/state', undefined, 'get')).json();
   expect(s.device.setup_completed).toBe(true);
   expect(s.device.reboot_required).toBe(false);
+});
+
+
+test('App-Passwort: Anmeldung, falsches Passwort, Abmelden des Schutzes', async ({ page, request }) => {
+  await fresh(request);
+  const toastText = (text) => page.locator('.toast', { hasText: text }).or(page.locator('span.grow', { hasText: text })).first();
+  try {
+    await page.goto('/einstellungen/allgemein');
+    await page.getByLabel('Passwort', { exact: true }).fill('geheim1');
+    await page.getByRole('button', { name: 'Passwort setzen' }).click();
+    await expect(toastText('App-Passwort gesetzt.')).toBeVisible();
+    // a new browser (no session cookie) sees the login
+    await page.context().clearCookies();
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible();
+    await axe(page, 'Anmeldung');
+    await page.getByLabel('Passwort').fill('falsch');
+    await page.getByRole('button', { name: 'Anmelden' }).click();
+    await expect(page.getByRole('alert')).toContainText('stimmt nicht');
+    await page.getByLabel('Passwort').fill('geheim1');
+    await page.getByRole('button', { name: 'Anmelden' }).click();
+    await expect(page.locator('main h1').first()).toBeVisible();
+    await page.goto('/einstellungen/allgemein');
+    await page.getByRole('button', { name: 'Passwort entfernen' }).click();
+    await expect(toastText('App-Passwort entfernt.')).toBeVisible();
+  } finally {
+    // never leave a password behind for the other tests
+    await page.request.post('/api/v1/auth/login', { data: { password: 'geheim1' } });
+    await page.request.post('/api/v1/security/password', { data: { password: null } });
+  }
+});
+
+test('Fernbedienung: Taste anlernen und Stummschalten', async ({ page, request }) => {
+  await fresh(request);
+  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
+  await page.goto('/einstellungen/hardware');
+  await page.getByRole('button', { name: 'Stumm anlernen' }).click();
+  await expect(page.getByRole('button', { name: 'Warte auf Taste für „Stumm“ …' })).toBeVisible();
+  await api(request, '/sim/ir', { code: '0x4711' });
+  await expect(page.locator('.toast', { hasText: 'Taste gespeichert (0x4711).' })).toBeVisible();
+  await api(request, '/sim/ir', { code: '0x4711' });
+  await page.goto('/');
+  await api(request, '/queue', { id: 'local:album:3' });
+  await expect(page.getByRole('button', { name: 'Stumm' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Stumm' }).click();
+  await expect(page.getByRole('button', { name: 'Stumm' })).toHaveAttribute('aria-pressed', 'false');
 });

@@ -1,0 +1,18 @@
+[Unit]
+Description=Lyrion player (squeezelite)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Environment=AROIO_NAME=Aroio LMS_SERVER=
+EnvironmentFile=-/data/aroio/names.env
+EnvironmentFile=-/data/aroio/squeezelite.env
+# -C 1: let go of the loopback after 1 s of pause, so the next source can open it
+# at its own rate; -r: every rate natively (CamillaDSP follows); -a: 32 bit output
+ExecStart=/usr/bin/squeezelite -n ${AROIO_NAME} -o plughw:Loopback,0,0 -C 1 -a 200:4:32:0 \
+    -r 44100-384000 $LMS_SERVER
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

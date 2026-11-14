@@ -1,7 +1,7 @@
 <script>
   // Room correction, one task per screen. State lives in aroiod (topic
   // "roomcorr"); this view renders it and sends actions.
-  import { Mic, CircleCheck, TriangleAlert, Volume2, LoaderCircle, Usb, FileUp, Check } from '@lucide/svelte';
+  import { Mic, CircleCheck, TriangleAlert, Volume2, LoaderCircle, Usb, FileUp, Check, Download } from '@lucide/svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Stepper from '../components/Stepper.svelte';
   import Dialog from '../components/Dialog.svelte';
@@ -250,6 +250,10 @@
         </div>
         <button class="btn primary block" type="button" onclick={() => act('save', { name })}>{t('Speichern und verwenden')}</button>
         <button class="btn ghost block" type="button" onclick={() => act('goto', { step: 'measure' })}>{t('Noch einmal messen')}</button>
+        {#if app.topics.device?.expert_mode && app.topics.dsp?.status?.recordings}
+          <a class="btn ghost block" href="/api/v1/roomcorr/recordings.zip" download><Download size={18} aria-hidden="true" />{t('Messaufnahmen herunterladen (WAV)')}</a>
+          <p class="muted small">{t('Rohaufnahmen und Sweep, z. B. für Acourate, Audiovero oder REW.')}</p>
+        {/if}
       </section>
     {/if}
 

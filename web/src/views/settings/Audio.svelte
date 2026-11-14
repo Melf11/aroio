@@ -116,6 +116,11 @@
             {#each [44100, 48000, 88200, 96000, 176400, 192000] as r}<option value={r}>{r / 1000} kHz</option>{/each}
           </select></div>
       {/if}
+      <div class="field"><label for="mr">{t('Höchste Abtastrate des DAC')}</label>
+        <select id="mr" class="input" value={cfg.max_rate} onchange={(e) => save({ max_rate: +e.currentTarget.value })} aria-describedby="mr-h">
+          {#each [48000, 96000, 192000] as r}<option value={r}>{r / 1000} kHz</option>{/each}
+        </select>
+        <span id="mr-h" class="hint">{t('Höhere Raten werden auf das Doppelte bzw. Vierfache von 44,1 oder 48 kHz heruntergerechnet, das der DAC noch kann.')}</span></div>
       <Segmented legend={t('Resampler-Qualität')} value={cfg.resampler} options={[{ value: 'fast', label: t('Schnell') }, { value: 'balanced', label: t('Ausgewogen') }, { value: 'best', label: t('Beste') }]} onchange={(v) => save({ resampler: v })} />
     </section>
 

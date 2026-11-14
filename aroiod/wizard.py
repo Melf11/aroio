@@ -39,6 +39,8 @@ class RoomWizard:
         self.positions = 3
         self.current = 0
         self.measurements = {}        # (position, channel) -> {"curve", "peak"}
+        self.recordings = {}          # (position, channel) -> raw recording (for Acourate/Audiovero)
+        self.sweep = None
         self.busy = None              # text of what is running
         self.progress = 0.0
         self.level = None
@@ -147,8 +149,7 @@ class RoomWizard:
 
     async def a_level(self):
         """Pink noise ramps up until the mic sees about 75 dB SPL; never above the limit."""
-        self.device.pause()
-        self.device.set_rate(RATE)   # measure at 48 kHz: no resampling between sweep and microphone
+        self.device.begin_measurement()   # no correction (Cleaner stays), 0 dB, 48 kHz
         self.busy = "Rauschen wird langsam lauter …"
         self.publish()
         try:
@@ -163,8 +164,7 @@ class RoomWizard:
         if self.step != "measure":
             raise ValueError("Jetzt wird nicht gemessen.")
         p = self.current
-        self.device.pause()          # the measurement needs the speakers alone
-        self.device.set_rate(RATE)
+        self.device.begin_measurement()
         sweep, inverse = rc.log_sweep(RATE, seconds=self.world.sweep_seconds)
         self.issue = None
         try:
@@ -181,6 +181,8 @@ class RoomWizard:
                         self.measurements.pop((p, c), None)
                     return
                 self.measurements[(p, ch)] = {"curve": curve, "peak": peak}
+                self.recordings[(p, ch)] = rec
+                self.sweep = sweep
             if p + 1 < self.positions:
                 self.current = p + 1
         finally:
@@ -217,9 +219,36 @@ class RoomWizard:
             raise ValueError(character)
         self.character = character
 
+    def _save_recordings(self):
+        """Raw recordings + sweep as 32-bit float WAVs: export for Acourate/Audiovero/REW."""
+        import shutil
+        last = self.device.data / "measurements" / "last"
+        tmp = self.device.data / "measurements" / "last.tmp"
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        for (p, ch), rec in sorted(self.recordings.items()):
+            rc.write_wav_f32(tmp / f"position{p + 1}_{ch}.wav", rec, RATE)
+        if self.sweep is not None:
+            rc.write_wav_f32(tmp / "sweep.wav", self.sweep, RATE)
+        mic = self.world.mic_status()
+        (tmp / "info.txt").write_text(
+            f"Aroio Raummessung {time.strftime('%Y-%m-%d %H:%M')}\n"
+            f"Abtastrate: {RATE} Hz, 32 Bit float, mono\n"
+            f"Sweep: logarithmisch 10 Hz – {min(22000, RATE * 0.475):.0f} Hz, {self.world.sweep_seconds} s, -12 dBFS\n"
+            f"Positionen: {self.positions}\nMikrofon: {mic.get('name') or '–'}\n"
+            f"Kalibrierung: {self.calibration_name or 'keine'} (nicht in die Aufnahmen eingerechnet)\n"
+            "Dateien: positionN_L.wav / positionN_R.wav = Aufnahme des Mikrofons, sweep.wav = Anregung\n")
+        shutil.rmtree(last, ignore_errors=True)
+        tmp.rename(last)
+
     async def a_compute(self):
         self.busy = "Berechne die Korrektur …"
         self.publish()
+        self.device.end_measurement()
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, self._save_recordings)
+        except OSError as exc:
+            log.warning("saving recordings failed: %s", exc)
         try:
             curves = {}
             for ch in ("L", "R"):
@@ -330,6 +359,7 @@ class RoomWizard:
         self.active = False
 
     def a_cancel(self):
+        self.device.end_measurement()
         if self.comparing:
             self._end_compare(restore=True)
         self.world.stop_measurement()

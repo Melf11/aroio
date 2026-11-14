@@ -1,1 +1,1 @@
-root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait cfg80211.ieee80211_regdom=DE quiet loglevel=3 console=tty3 fsck.mode=skip systemd.show_status=0
+root=/dev/mmcblk0p2 rootfstype=squashfs ro rootwait cfg80211.ieee80211_regdom=DE quiet loglevel=3 console=tty3 fbcon=font:TER16x32 fsck.mode=skip systemd.show_status=0

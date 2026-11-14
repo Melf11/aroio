@@ -81,7 +81,8 @@ async def test_websocket_snapshot_and_updates(client):
 
 async def test_ir_key_switches_preset(client, device):
     device.save_preset({"id": "p2", "name": "Zwei", "kind": "peq", "peq": {"L": [], "R": []}}, activate=False)
-    await post(client, "/sim/key", {"key": "KEY_2"})
+    n = [p["id"] for p in device.config.get("dsp.presets")].index("p2") + 1   # number = position in the list
+    await post(client, "/sim/key", {"key": f"KEY_{n}"})
     assert device.config.get("dsp.active_preset") == "p2"
 
 

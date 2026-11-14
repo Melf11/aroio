@@ -1,0 +1,2 @@
+# IR receiver (gpio-ir): decode every protocol, aroiod maps the scancodes (hardware.ir_map)
+ACTION=="add", SUBSYSTEM=="rc", RUN+="/usr/bin/ir-keytable -s %k -p all"

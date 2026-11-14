@@ -2,7 +2,6 @@
   import { Download, RotateCcw, Power } from '@lucide/svelte';
   import PageHeader from '../../components/PageHeader.svelte';
   import Toggle from '../../components/Toggle.svelte';
-  import Segmented from '../../components/Segmented.svelte';
   import Dialog from '../../components/Dialog.svelte';
   import { toast } from '../../lib/state.svelte.js';
   import { api, config } from '../../lib/api.js';
@@ -19,8 +18,14 @@
 
 <div class="page">
   <PageHeader title={t('System (Experten)')} backTo="/einstellungen" />
-  <Segmented legend={t('Protokoll')} value={unit} onchange={(v) => (unit = v)}
-    options={[{ value: 'system', label: 'System' }, { value: 'audio', label: t('Ton') }, { value: 'lyrion', label: 'Lyrion' }, { value: 'kernel', label: 'Kernel' }]} />
+  <div class="field">
+    <label for="lunit">{t('Protokoll')}</label>
+    <select id="lunit" class="input" bind:value={unit}>
+      <option value="system">System</option><option value="audio">{t('Ton (CamillaDSP)')}</option><option value="lyrion">Lyrion</option>
+      <option value="airplay">AirPlay</option><option value="spotify">Spotify</option><option value="bluetooth">Bluetooth</option>
+      <option value="network">{t('Netzwerk')}</option><option value="kernel">Kernel</option>
+    </select>
+  </div>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex (scrollable region must be reachable by keyboard, WCAG 2.1.1) -->
   <pre class="log" role="region" tabindex="0" aria-label={t('Protokoll {u}', { u: unit })}>{(logs || []).join('\n')}</pre>
   <a class="btn" href="/api/v1/system/diagnostics" download><Download size={18} aria-hidden="true" />{t('Diagnose-Paket herunterladen')}</a>

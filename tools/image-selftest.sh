@@ -21,12 +21,29 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          etc/systemd/system/multi-user.target.wants/bluetooth.service \
          etc/systemd/system/multi-user.target.wants/bluealsa.service \
          etc/systemd/system/multi-user.target.wants/bluealsa-aplay.service \
-         etc/systemd/system/multi-user.target.wants/aroio-bt-agent.service; do
+         etc/systemd/system/multi-user.target.wants/aroio-bt-agent.service \
+         usr/bin/librespot etc/systemd/system/multi-user.target.wants/aroio-spotify.service usr/lib/aroio/spotify-event \
+         etc/systemd/system/multi-user.target.wants/squeezelite.service etc/systemd/system/multi-user.target.wants/upmpdcli.service \
+         etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/lib/aroio/infoscreen \
+         etc/systemd/system/data.mount.wants/aroio-grow-data.service usr/sbin/sfdisk usr/bin/partx usr/lib/systemd/systemd-growfs \
+         usr/share/aroio/filters/BBCDipL96.dbl usr/share/aroio/filters/EchoR192.dbl usr/share/aroio/licenses.json \
+         usr/lib/udev/rules.d/90-aroio-ir.rules usr/bin/ir-keytable; do
     if [ -L "$R/$f" ]; then target="$R$(readlink "$R/$f")"; else target="$R/$f"; fi   # links are absolute
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
 [ -z "$(ls "$R/usr/share/aroio-web/assets" | grep sim || true)" ] || { echo "Simulator im Image"; fail=1; }
 grep -q "^/dev/root / auto ro" "$R/etc/fstab" || { echo "Root nicht read-only in fstab"; fail=1; }
+grep -q "LABEL=data.*x-systemd.growfs" "$R/etc/fstab" || { echo "/data wächst nicht mit (x-systemd.growfs)"; fail=1; }
+[ -L "$R/etc/dropbear" ] && [ "$(readlink "$R/etc/dropbear")" = "/data/dropbear" ] || { echo "SSH-Hostschlüssel nicht auf /data"; fail=1; }
+[ ! -d "$R/usr/lib/python3"*/site-packages/scipy ] 2>/dev/null || { echo "scipy noch im Image"; fail=1; }
+SQ=$(stat -c %s /build/out/images/rootfs.squashfs)
+[ "$SQ" -lt $((240 * 1024 * 1024)) ] || { echo "rootfs zu groß für die 256-MB-Slots: $SQ"; fail=1; }
+echo "rootfs.squashfs: $((SQ / 1048576)) MB, Module: $(du -sm "$R/usr/lib/modules" | cut -f1) MB"
+for u in squeezelite aroio-spotify upmpdcli shairport-sync bluealsa-aplay; do
+    grep -rq "Loopback,0,0" "$R/usr/lib/systemd/system/$u.service" "$R/usr/lib/systemd/system/$u.service.d" "$R/etc/shairport-sync.conf" "$R/etc/mpd.conf" 2>/dev/null \
+        || { echo "$u schreibt nicht in die Loopback"; fail=1; }
+done
+grep -q -- "--volume=none" "$R/usr/lib/systemd/system/bluealsa-aplay.service.d/aroio.conf" || { echo "bluealsa-aplay ohne --volume=none (bricht ohne Mixer ab)"; fail=1; }
 ls "$R"/usr/lib/firmware/brcm/BCM4345C0*.hcd >/dev/null 2>&1 || { echo "Bluetooth-Firmware Pi 4 (BCM4345C0) fehlt"; fail=1; }
 grep -q "^root:[*!]" "$R/etc/shadow" || { echo "root hat ein leeres Passwort (dropbear lehnt dann auch Schlüssel ab)"; fail=1; }
 if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then

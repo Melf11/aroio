@@ -1,0 +1,65 @@
+#!/usr/bin/python3
+"""Info screen on the HDMI output (tty1): name, addresses, what is playing.
+Text only (framebuffer console, Terminus 16x32), refreshed every 2 seconds."""
+import json
+import shutil
+import time
+import urllib.request
+
+URL = "http://127.0.0.1/api/v1/internal/status"
+CLEAR, HIDE, BOLD, DIM, CYAN, RESET = "\033[2J\033[H", "\033[?25l", "\033[1m", "\033[2m", "\033[36m", "\033[0m"
+
+
+def fetch():
+    try:
+        return json.load(urllib.request.urlopen(URL, timeout=2))
+    except (OSError, ValueError):
+        return None
+
+
+def fit(text, width):
+    text = text or ""
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
+def render(s, width):
+    if not s:
+        return [f"{BOLD}Aroio{RESET}", "", f"{DIM}startet …{RESET}"]
+    lines = [f"{BOLD}{CYAN}{fit(s.get('name'), width)}{RESET}", ""]
+    if s.get("hotspot"):
+        lines += ["Einrichtung:", f"WLAN „{fit(s['hotspot'], width - 8)}“ wählen,", "dann http://192.168.4.1 öffnen", ""]
+    else:
+        lines.append(fit(f"http://{s.get('hostname')}.local", width))
+        for kind in ("lan", "wifi"):
+            if s.get(kind):
+                lines.append(f"{DIM}{'LAN ' if kind == 'lan' else 'WLAN'}{RESET} {s[kind]}")
+        lines.append("")
+    if s.get("state") == "playing":
+        lines.append(f"{DIM}{s.get('source') or ''}{RESET}")
+        lines.append(f"{BOLD}{fit(s.get('title'), width)}{RESET}")
+        if s.get("artist"):
+            lines.append(fit(s["artist"], width))
+        info = []
+        if s.get("rate"):
+            info.append(f"{s['rate'] / 1000:g} kHz")
+        if s.get("volume") is not None:
+            info.append(f"Lautstärke {s['volume']} %")
+        lines.append(f"{DIM}{' · '.join(info)}{RESET}")
+    else:
+        lines.append(f"{DIM}Bereit{RESET}")
+    return lines
+
+
+def main():
+    last = None
+    while True:
+        width = max(20, shutil.get_terminal_size((60, 20)).columns - 2)
+        screen = "\n".join(" " + line for line in render(fetch(), width))
+        if screen != last:
+            print(CLEAR + HIDE + "\n" + screen, end="", flush=True)
+            last = screen
+        time.sleep(2)
+
+
+if __name__ == "__main__":
+    main()

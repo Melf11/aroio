@@ -1,0 +1,14 @@
+[Unit]
+Description=Grow the data partition to the card size
+DefaultDependencies=no
+Requires=dev-disk-by\x2dlabel-data.device
+After=dev-disk-by\x2dlabel-data.device
+Before=data.mount systemd-fsck@dev-disk-by\x2dlabel-data.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/aroio/grow-data
+RemainAfterExit=yes
+
+[Install]
+WantedBy=data.mount
