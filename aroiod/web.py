@@ -19,6 +19,7 @@ from . import dsp
 from .config import Invalid
 from .library import art_svg
 from .migration import FILTER_RE, RATE_TOKENS
+from .store import load_json
 
 log = logging.getLogger("aroiod.web")
 routes = web.RouteTableDef()
@@ -215,6 +216,11 @@ async def art(request):
 
 # ── DSP ──────────────────────────────────────────────────────────────────────
 
+@routes.get(A + "/audio/hardware")
+async def audio_hardware(request):
+    return ok(dev(request).audio_hardware())
+
+
 @routes.get(A + "/dsp/presets/{id}/curve")
 async def preset_curve(request):
     freqs = dsp.log_freqs(120)
@@ -229,6 +235,19 @@ async def preset_get(request):
     if p is None:
         raise KeyError(pid)
     return ok(p)
+
+
+@routes.get(A + "/dsp/presets/{id}/measurement")
+async def preset_measurement(request):
+    """The room measurement a preset was calculated from (for the filter editor)."""
+    d, pid = dev(request), request.match_info["id"]
+    p = next((x for x in d.config.data["dsp"]["presets"] if x["id"] == pid), None)
+    if p is None or not p.get("measurement"):
+        raise KeyError(pid)
+    data = load_json(d.data / "measurements" / f"{p['measurement']}.json", None)
+    if data is None:
+        raise KeyError(pid)
+    return ok(data)
 
 
 @routes.post(A + "/dsp/presets/{id}/activate")
@@ -247,6 +266,13 @@ async def preset_patch(request):
     if p["origin"] == "builtin":
         raise ValueError("Dieses Preset ist fest eingebaut.")
     allowed = {k: v for k, v in data.items() if k in ("name", "gain_db", "delay_ms", "trim_db", "peq")}
+    if "peq" in allowed and p["kind"] != "peq":
+        raise ValueError("Nur Equalizer-Einstellungen haben bearbeitbare Filter.")
+    if "peq" in allowed and "gain_db" not in allowed:
+        try:   # automatic headroom: never clip because of a boost
+            allowed["gain_db"] = dsp.headroom_db(allowed["peq"])
+        except (KeyError, TypeError, ValueError):
+            pass   # invalid filters: the config validation reports them
     d.save_preset(dict(p, **allowed), activate=d.config.get("dsp.active_preset") == pid)
     return ok()
 
@@ -511,6 +537,30 @@ async def sim_fir(request):
     if not path.is_file():
         raise KeyError(name)
     return web.FileResponse(path, headers={"Content-Type": "application/octet-stream"})
+
+
+@routes.post(A + "/internal/source")
+async def internal_source(request):
+    """Events from player hooks on the device (shairport-sync, librespot, squeezelite ...):
+    {"source": "airplay", "event": "start"|"stop"|"meta", "meta": {...}, "rate": 44100}.
+    Only from the device itself."""
+    if request.remote not in ("127.0.0.1", "::1"):
+        raise web.HTTPForbidden()
+    d, data = dev(request), await body(request)
+    sid, event = data.get("source"), data.get("event")
+    if sid not in ("lms", "spotify", "airplay", "upnp", "bluetooth", "input", "roon"):
+        raise ValueError("Unbekannte Quelle")
+    meta = data.get("meta") or {"title": sid, "artist": "", "album": "", "duration": 0, "live": True,
+                                "format": {"codec": "PCM", "bits": 0, "rate": data.get("rate") or 44100}}
+    if event == "start":
+        d.source_started(sid, meta, rate=data.get("rate"))
+    elif event == "stop":
+        d.source_stopped(sid)
+    elif event == "meta":
+        d.external_meta(sid, meta)
+    else:
+        raise ValueError("Unbekanntes Ereignis")
+    return ok()
 
 
 @routes.post(A + "/sim/{event}")

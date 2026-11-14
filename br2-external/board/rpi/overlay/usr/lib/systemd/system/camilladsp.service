@@ -1,14 +1,10 @@
 [Unit]
 Description=CamillaDSP audio engine
-DefaultDependencies=no
-After=sound.target local-fs.target
+After=sound.target local-fs.target systemd-modules-load.service
 Before=aroiod.service
 
 [Service]
-User=aroio
-ExecStart=/usr/bin/camilladsp --wait -a 127.0.0.1 -p 1234 -s /run/aroio/camilladsp-state.yml
-RuntimeDirectory=aroio
-RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/camilladsp --wait -a 127.0.0.1 -p 1234
 CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=80
 LimitRTPRIO=95

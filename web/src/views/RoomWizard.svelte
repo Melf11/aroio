@@ -6,6 +6,7 @@
   import Stepper from '../components/Stepper.svelte';
   import Dialog from '../components/Dialog.svelte';
   import FrequencyChart from '../components/FrequencyChart.svelte';
+  import PeqEditor from '../components/PeqEditor.svelte';
   import Segmented from '../components/Segmented.svelte';
   import { app, toast, announce } from '../lib/state.svelte.js';
   import { roomcorr } from '../lib/api.js';
@@ -19,6 +20,10 @@
   let name = $state(t('Wohnzimmer'));
   let channel = $state('L');
   let listen = $state('new');
+  let editorKey = $state(0);
+  const manual = $derived(!!(s?.result && Object.values(s.result.channels).some((c) => c.manual)));
+  const setFilters = (ch, filters) => act('set_filters', { channel: ch, filters });
+  async function resetFilters() { await act('reset_filters'); editorKey++; announce(t('Filter auf den Vorschlag zurückgesetzt')); }
   let lastStep = null;
 
   $effect(() => {
@@ -220,12 +225,17 @@
             { label: t('Mit Korrektur'), values: ch.after, color: 'var(--brand-ink)', width: 3 },
           ]} />
         {#if r.distance_cm > 2}<p class="muted small">{t('Ein Lautsprecher steht {cm} cm weiter weg. Der Aroio gleicht die Laufzeit aus.', { cm: r.distance_cm.toLocaleString('de-DE') })}</p>{/if}
-        {#if expert}
-          <details><summary>{t('Filter ({n})', { n: ch.filters.length })}</summary>
-            <table class="filters"><thead><tr><th>{t('Frequenz')}</th><th>{t('Pegel')}</th><th>Q</th></tr></thead>
-              <tbody>{#each ch.filters as f}<tr><td>{f.freq} Hz</td><td>{db(f.gain)}</td><td>{f.q}</td></tr>{/each}</tbody></table>
-          </details>
-        {/if}
+        <details class="card manual">
+          <summary><span class="grow">{t('Filter von Hand anpassen')}</span>{#if manual}<span class="badge warn">{t('angepasst')}</span>{/if}</summary>
+          <div class="stack edit">
+            <p class="muted small">{t('Die Änderungen sind sofort zu hören, wenn „Mit neuer Korrektur“ gewählt ist.')}</p>
+            {#key editorKey}
+              <PeqEditor peq={{ L: r.channels.L.filters, R: r.channels.R.filters }} measurement={{ freqs: r.freqs, channels: r.channels }}
+                         fmax={expert ? 20000 : 1000} onchange={setFilters} />
+            {/key}
+            {#if manual}<button class="btn ghost" type="button" onclick={resetFilters}>{t('Auf den Vorschlag zurücksetzen')}</button>{/if}
+          </div>
+        </details>
 
         <div class="card stack">
           <h3>{t('Probehören')}</h3>
@@ -274,8 +284,9 @@
   .positions { list-style: none; padding: 0; margin: 0; display: flex; gap: 8px; flex-wrap: wrap; }
   .positions button { width: 48px; height: 48px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--surface); font-weight: 700; display: grid; place-items: center; }
   .positions li.current button { border-color: var(--brand-ink); background: var(--brand-soft); color: var(--brand-soft-ink); }
-  .filters { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-  .filters th, .filters td { text-align: right; padding: 6px; border-bottom: 1px solid var(--border); }
+  .manual { padding: 0; }
+  .manual summary { padding: 14px 16px; display: flex; gap: 8px; align-items: center; }
+  .manual .edit { padding: 0 16px 16px; }
   details summary { cursor: pointer; font-weight: 600; color: var(--brand-ink); min-height: var(--tap); display: flex; align-items: center; }
   .done { align-items: flex-start; padding-top: 16px; }
   .back { margin-top: 12px; }

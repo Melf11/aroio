@@ -38,13 +38,22 @@ NETWORKS = [("Zuhause", -48, True), ("Zuhause-5G", -55, True), ("FRITZ!Box 7590 
             ("Nachbar", -78, True), ("Gast", -71, False)]
 
 
+def pink_noise(n, seed=0):
+    """1/f noise, RMS about −15 dBFS (used for level checks on the device)."""
+    rng = np.random.default_rng(seed)
+    spec = np.fft.rfft(rng.normal(size=n))
+    f = np.arange(len(spec))
+    f[0] = 1
+    noise = np.fft.irfft(spec / np.sqrt(f), n)
+    return noise / np.sqrt(np.mean(noise ** 2)) * 10 ** (-15 / 20)
+
+
 class MeasurementCancelled(Exception):
     pass
 
 
 class SimWorld:
     simulated = True
-    dac_device = "hw:AroioDAC,0"
     hw_volume = False
     speed = 1.0
     fmax = 1000.0
@@ -83,9 +92,42 @@ class SimWorld:
         self._cancel = False
         self.volume_db = None
         self.tone = None
+        self.usb_dac = False
 
     def attach(self, device):
         self.device = device
+        self.active_driver = device.config.get("hardware.dac_driver")   # takes effect at boot
+
+    # ── sound cards (as /proc/asound/cards would list them) ──
+    def cards(self):
+        driver = getattr(self, "active_driver", "auto")
+        cards = [{"index": 0, "id": "Loopback", "driver": "Loopback", "name": "Loopback"},
+                 {"index": 1, "id": "vc4hdmi0", "driver": "vc4-hdmi", "name": "vc4-hdmi-0"}]
+        if driver == "onboard":
+            if self.board != "pi5":
+                cards.append({"index": 2, "id": "Headphones", "driver": "bcm2835_headpho", "name": "bcm2835 Headphones"})
+        elif self.model.startswith("Aroio") or driver == "aroio":
+            cards.append({"index": 2, "id": "AroioDAC", "driver": "HifiberryDacp", "name": "Aroio DAC"})
+        else:
+            cards.append({"index": 2, "id": "IQaudIODAC", "driver": "IQaudIODAC", "name": "Raspberry Pi DAC+"})
+        if self.usb_dac:
+            cards.append({"index": 3, "id": "DragonFly", "driver": "USB-Audio", "name": "AudioQuest DragonFly Red"})
+        if self.mic_mode == "sim":
+            cards.append({"index": 4, "id": "U18dB", "driver": "USB-Audio", "name": "Umik-1  Gain: 18dB"})
+        return cards
+
+    @property
+    def dac_device(self):
+        from .real import resolve_output
+        return resolve_output(self.cards(), self.device.config.get("audio.output") if self.device else "auto")
+
+    def audio_outputs(self):
+        from .real import list_outputs
+        return list_outputs(self.cards())
+
+    def set_dac_driver(self, driver):
+        from .models import dac_driver_lines
+        self.log("Boot-Partition aroio.txt: " + " | ".join(dac_driver_lines(driver)[1:] or ["(leer)"]) + ", aktiv nach Neustart")
 
     def log(self, text):
         self.events.insert(0, {"t": time.strftime("%H:%M:%S"), "text": text})
@@ -112,7 +154,7 @@ class SimWorld:
             "model": self.model, "board": self.board, "mic": self.mic_mode != "none", "mic_mode": self.mic_mode,
             "host_mic": self.host_mic, "internet": self.internet,
             "lan": self.lan, "wifi": self.wifi_ssid, "lyrion_external": self.lyrion_external,
-            "spotify_needs_key": self.spotify_needs_key, "noise_next": self.noise_next,
+            "spotify_needs_key": self.spotify_needs_key, "noise_next": self.noise_next, "usb_dac": self.usb_dac,
             "leds": self.leds, "display": lines, "booting": self.booting, "events": self.events,
             "camilla": {"loads": self.camilla_loads, "pipeline": [s.get("names") or s.get("name") for s in (self.camilla or {}).get("pipeline", [])],
                         "samplerate": (self.camilla or {}).get("devices", {}).get("samplerate"),
@@ -310,6 +352,7 @@ class SimWorld:
         self.publish_sim()
         device.hub.publish("system", {"rebooting": True})
         await asyncio.sleep(0.2 if self.fast else 3.0)
+        self.active_driver = device.config.get("hardware.dac_driver")
         if getattr(self, "_installed", None):
             from . import engine
             engine.VERSION = self._installed
@@ -491,6 +534,10 @@ class SimWorld:
                 d.wizard.publish()
             self.log({"none": "Kein Mikrofon", "sim": "Mikrofon: simulierter Raum",
                       "host": f"Mikrofon am Rechner: {self.host_mic or 'nicht gewählt'}"}[self.mic_mode])
+        elif name == "usb_dac":
+            self.usb_dac = bool(data["on"])
+            self.log("USB-DAC eingesteckt" if self.usb_dac else "USB-DAC abgezogen")
+            d.apply_dsp()
         elif name == "noise_next":
             self.noise_next = True
             self.log("Nächste Messung mit Störgeräusch")

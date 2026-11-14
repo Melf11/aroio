@@ -1,0 +1,2 @@
+# Profile "iqaudio": force the Raspberry Pi DAC+ (IQaudio) overlay, e.g. for boards whose EEPROM is not read
+dtoverlay=iqaudio-dacplus

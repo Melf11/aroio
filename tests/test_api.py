@@ -232,3 +232,80 @@ async def test_host_microphone_timeout_message(client, device):
     await gen.__anext__()
     with pytest.raises(ValueError, match="Simulator hat nicht geantwortet"):
         await gen.__anext__()
+
+
+async def test_audio_hardware_output_and_driver(client, device):
+    hw = await (await client.get("/api/v1/audio/hardware")).json()
+    assert [o["kind"] for o in hw["outputs"]] == ["hat", "hdmi"]           # AroioLT: Aroio DAC + HDMI, no loopback/mic
+    assert hw["active"] == "hw:CARD=AroioDAC,DEV=0" and hw["selected"] == "auto"
+    assert any(d["id"] == "rpi-dacplus" for d in hw["drivers"])
+
+    # plug in a USB DAC and choose it: CamillaDSP plays there
+    await post(client, "/sim/usb_dac", {"on": True})
+    await client.patch("/api/v1/config", json={"audio": {"output": "hw:CARD=DragonFly,DEV=0"}})
+    assert device.world.camilla["devices"]["playback"]["device"] == "hw:CARD=DragonFly,DEV=0"
+    # unplugged: falls back to the automatic choice instead of failing
+    await post(client, "/sim/usb_dac", {"on": False})
+    assert device.world.camilla["devices"]["playback"]["device"] == "hw:CARD=AroioDAC,DEV=0"
+
+    # driver change: written to the boot partition, active after reboot
+    await client.patch("/api/v1/config", json={"hardware": {"dac_driver": "onboard"}})
+    s = await state(client)
+    assert s["device"]["reboot_required"] is True
+    assert "AroioDAC" in device.world.dac_device                         # not yet
+    await device.reboot()
+    assert (await state(client))["device"]["reboot_required"] is False
+    kinds = [o["kind"] for o in (await (await client.get("/api/v1/audio/hardware")).json())["outputs"]]
+    assert kinds == ["analog", "hdmi"]
+    r = await client.patch("/api/v1/config", json={"hardware": {"dac_driver": "nope"}})
+    assert r.status == 400
+
+
+async def run_wizard_to_result(client, positions=1):
+    rc = lambda a, d=None: post(client, "/roomcorr/" + a, d)  # noqa: E731
+    await post(client, "/sim/mic", {"on": True})
+    for a in ("start", "next", "next", "next", "level", "next"):
+        await rc(a)
+    await rc("set_positions", {"count": positions})
+    for _ in range(positions):
+        await rc("measure")
+    await rc("next")
+    await rc("compute")
+    return rc
+
+
+async def test_manual_filters_in_wizard(client, device):
+    rc = await run_wizard_to_result(client)
+    r = (await state(client))["roomcorr"]["result"]
+    auto_l = r["channels"]["L"]["filters"]
+    # add a 4 dB boost at 80 Hz to the left channel: preview follows, headroom protects
+    await rc("set_filters", {"channel": "L", "filters": auto_l + [{"type": "peaking", "freq": 80, "gain": 4, "q": 1}]})
+    r = (await state(client))["roomcorr"]["result"]
+    assert r["channels"]["L"]["manual"] is True and r["channels"]["R"].get("manual") is not True
+    preview = next(p for p in device.config.get("dsp.presets") if p["id"] == "preview")
+    assert len(preview["peq"]["L"]) == len(auto_l) + 1
+    assert r["headroom_db"] <= -3.5
+    # invalid values are rejected with a readable message
+    body = await post(client, "/roomcorr/set_filters", {"channel": "both", "filters": [{"type": "peaking", "freq": 5, "gain": 0, "q": 1}]}, status=400)
+    assert "mindestens" in body["error"]
+    await rc("reset_filters")
+    assert (await state(client))["roomcorr"]["result"]["channels"]["L"]["filters"] == auto_l
+    # both channels at once, then save: the measurement is kept for later editing
+    await rc("set_filters", {"channel": "both", "filters": [{"type": "peaking", "freq": 43, "gain": -6, "q": 3}]})
+    await rc("save", {"name": "Von Hand"})
+    pid = device.config.get("dsp.active_preset")
+    m = await (await client.get(f"/api/v1/dsp/presets/{pid}/measurement")).json()
+    assert len(m["freqs"]) == len(m["channels"]["L"]["before"]) and m["channels"]["R"]["auto_filters"]
+
+
+async def test_edit_peq_preset_headroom(client, device):
+    device.save_preset({"id": "eq1", "name": "EQ", "kind": "peq", "peq": {"L": [], "R": []}}, activate=True)
+    r = await client.patch("/api/v1/dsp/presets/eq1", json={"peq": {"L": [{"type": "lowshelf", "freq": 100, "gain": 5, "q": 0.7}], "R": []}})
+    assert r.status == 200
+    p = next(x for x in device.config.get("dsp.presets") if x["id"] == "eq1")
+    assert p["gain_db"] <= -4.5 and len(p["peq"]["L"]) == 1
+    assert "peq_L_0" in device.world.camilla["filters"]                 # active preset: audible at once
+    r = await client.patch("/api/v1/dsp/presets/eq1", json={"peq": {"L": [{"type": "peaking", "freq": 100, "gain": 40, "q": 1}], "R": []}})
+    assert r.status == 400
+    r = await client.get("/api/v1/dsp/presets/eq1/measurement")
+    assert r.status == 404

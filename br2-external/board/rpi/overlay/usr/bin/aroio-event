@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+"""Player hooks -> aroiod.   aroio-event <source> start|stop [rate]"""
+import json
+import sys
+import urllib.request
+
+source, event = sys.argv[1], sys.argv[2]
+data = {"source": source, "event": event}
+if len(sys.argv) > 3:
+    data["rate"] = int(sys.argv[3])
+req = urllib.request.Request("http://127.0.0.1/api/v1/internal/source", data=json.dumps(data).encode(),
+                             headers={"Content-Type": "application/json"})
+try:
+    urllib.request.urlopen(req, timeout=2).read()
+except OSError as exc:
+    print(f"aroio-event: {exc}", file=sys.stderr)

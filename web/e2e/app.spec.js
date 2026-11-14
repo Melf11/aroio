@@ -102,6 +102,13 @@ test('Raumkorrektur Schritt für Schritt', async ({ page, request }) => {
   await page.getByRole('button', { name: 'Korrektur berechnen' }).click();
   await expect(page.getByRole('heading', { name: 'Ergebnis' })).toBeVisible({ timeout: 30000 });
   await axe(page, 'rc-result');
+  // adjust a filter by hand: the preview on the device follows
+  await page.getByText('Filter von Hand anpassen').click();
+  await page.getByText(/^Glocke \(Peak\)/).first().click();
+  await page.getByRole('spinbutton', { name: 'Pegel' }).first().fill('-2');
+  await page.getByRole('spinbutton', { name: 'Pegel' }).first().blur();
+  await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).roomcorr.result.channels.L.manual).toBe(true);
+  await axe(page, 'rc-manual');
   await page.getByLabel('Name für diese Einstellung').fill('Testraum');
   await page.getByRole('button', { name: 'Speichern und verwenden' }).click();
   await expect(page.getByRole('heading', { name: /Fertig/ })).toBeVisible();
@@ -117,4 +124,25 @@ test('Altgerät übernehmen', async ({ page, request }) => {
   await expect(page.getByRole('heading', { name: 'Fast fertig' })).toBeVisible();
   await page.getByRole('button', { name: 'Fertig' }).click();
   await expect(page.getByRole('heading', { name: 'Aroio Wohnzimmer' })).toBeVisible();
+});
+
+
+test('Klangeinstellung von Hand bearbeiten', async ({ page, request }) => {
+  await fresh(request);
+  const peq = { L: [{ type: 'peaking', freq: 60, gain: -6, q: 2 }], R: [{ type: 'peaking', freq: 60, gain: -6, q: 2 }] };
+  const cfg = await (await api(request, '/config', undefined, 'get')).json();
+  await api(request, '/config', { dsp: { presets: [...cfg.dsp.presets, { id: 'eq1', name: 'Mein EQ', kind: 'peq', peq }], active_preset: 'eq1' } }, 'patch');
+  await page.goto('/klang/preset/eq1');
+  await page.getByRole('button', { name: 'Filter bearbeiten' }).click();
+  await expect(page.getByRole('button', { name: 'Links und rechts gleich' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Filter hinzufügen' }).click();
+  await page.getByRole('spinbutton', { name: 'Frequenz' }).last().fill('220');
+  await page.getByRole('spinbutton', { name: 'Frequenz' }).last().blur();
+  const preset = async () => (await (await api(request, '/dsp/presets/eq1', undefined, 'get')).json());
+  await expect.poll(async () => (await preset()).peq.R.map((f) => f.freq)).toEqual([60, 220]);
+  await axe(page, 'peq-editor');
+  await page.getByRole('button', { name: 'Rückgängig' }).click();
+  await expect.poll(async () => (await preset()).peq.L.length).toBe(1);
+  await page.getByRole('button', { name: 'Fertig' }).click();
+  await expect(page.getByRole('button', { name: 'Filter bearbeiten' })).toBeVisible();
 });

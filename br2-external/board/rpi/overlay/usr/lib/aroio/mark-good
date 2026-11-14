@@ -1,0 +1,3 @@
+#!/bin/sh
+# Marks the running slot as good once aroiod answers (phase 1, together with rauc-tryboot).
+exit 0

@@ -70,6 +70,7 @@ class Device:
         self.update = {"current": VERSION, "available": None, "state": "idle", "progress": 0,
                        "notes": [], "checked": None}
         self.pending_migration = None
+        self.reboot_required = False
         self.wizard = None          # set by app (wizard.RoomWizard)
 
     # ── helpers ──────────────────────────────────────────────────────────────
@@ -120,6 +121,7 @@ class Device:
             "board": self.world.board, "board_label": board["label"],
             "fixed_level": self.fixed_level, "has_input": self.model["has_input"] or c["sources"]["input"]["enabled"],
             "version": VERSION, "setup_completed": c["setup"]["completed"],
+            "reboot_required": self.reboot_required,
             "simulated": self.world.simulated,
         })
 
@@ -251,6 +253,13 @@ class Device:
         self.publish_dsp()
         self.publish_player()
         return cfg
+
+    def audio_hardware(self):
+        from .models import DAC_DRIVERS
+        return {"outputs": self.world.audio_outputs(), "selected": self.config.get("audio.output"),
+                "active": self.world.dac_device, "driver": self.config.get("hardware.dac_driver"),
+                "drivers": [{k: d[k] for k in ("id", "label", "hint")} for d in DAC_DRIVERS],
+                "reboot_required": self.reboot_required}
 
     def signal_info(self):
         fmt = (self.meta or {}).get("format") or {}
@@ -545,6 +554,9 @@ class Device:
         if "network" in changed:
             self.world.network_apply(after["network"])
             self.publish_network()
+        if "hardware" in changed and after["hardware"]["dac_driver"] != before["hardware"]["dac_driver"]:
+            self.world.set_dac_driver(after["hardware"]["dac_driver"])
+            self.reboot_required = True
         if "hardware" in changed or "device" in changed or "setup" in changed:
             self.publish_device()
         if "update" in changed:
@@ -576,6 +588,8 @@ class Device:
         if self.config.get("dsp.active_preset") == pid:
             patch["dsp"]["active_preset"] = "bypass"
         self.patch_config(patch)
+        if target.get("measurement"):
+            (self.data / "measurements" / f"{target['measurement']}.json").unlink(missing_ok=True)
         for files in (target.get("fir") or {}).values():
             for f in files.values():
                 (self.data / "filters" / f).unlink(missing_ok=True)
@@ -660,6 +674,9 @@ class Device:
     async def reboot(self):
         self.hub.notice("Der Aroio startet neu …", key="reboot")
         await self.world.reboot(self)
+        self.reboot_required = False
+        self.apply_dsp()
+        self.publish_device()
 
     def test_tone(self, channel):
         if channel not in ("L", "R", "both"):

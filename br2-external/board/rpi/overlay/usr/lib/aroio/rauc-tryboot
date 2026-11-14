@@ -1,0 +1,9 @@
+#!/bin/sh
+# RAUC custom bootloader backend. Phase 1: switch slots via the Raspberry Pi firmware
+# (tryboot / autoboot.txt) with automatic fallback. Until then: report slot A as booted and good.
+case "$1" in
+    get-primary|get-current) echo A ;;
+    get-state) echo good ;;
+    set-primary|set-state) echo "rauc-tryboot: $* (not implemented yet)" >&2; exit 1 ;;
+    *) exit 1 ;;
+esac

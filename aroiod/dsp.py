@@ -1,4 +1,4 @@
-"""DSP: presets -> CamillaDSP 3 configuration, and filter responses for charts.
+"""DSP: presets -> CamillaDSP 4 configuration, and filter responses for charts.
 
 The CamillaDSP config is emitted as JSON (valid YAML 1.2, accepted by
 CamillaDSP). Signal flow, identical to the old BruteFIR setup:
@@ -44,13 +44,13 @@ def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
         "stop_on_rate_change": capture_rate is None,
         "rate_measure_interval": 1.0,
         "volume_ramp_time": 150,
-        "capture": {"type": "Alsa", "channels": 2, "device": capture, "format": "S32LE"},
-        "playback": {"type": "Alsa", "channels": 2, "device": playback, "format": "S32LE"},
+        "capture": {"type": "Alsa", "channels": 2, "device": capture, "format": "S32_LE"},
+        "playback": {"type": "Alsa", "channels": 2, "device": playback, "format": "S32_LE"},
     }
     if capture_rate and capture_rate != rate:
         devices["capture_samplerate"] = capture_rate
         devices["resampler"] = {"type": "AsyncSinc", "profile": {
-            "fast": "Fast", "balanced": "Balanced", "best": "VeryAccurate"}[resampler or "balanced"]}
+            "fast": "Fast", "balanced": "Balanced", "best": "Accurate"}[resampler or "balanced"]}
 
     filters, mixers, pipeline = {}, {}, []
     per_ch = {"L": [], "R": []}
@@ -91,7 +91,7 @@ def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
         for ch in ("L", "R"):
             name = f"fir_{ch}"
             filters[name] = {"type": "Conv", "parameters": {
-                "type": "Raw", "filename": str(Path(fir_dir) / files[ch]), "format": "FLOAT64LE"}}
+                "type": "Raw", "filename": str(Path(fir_dir) / files[ch]), "format": "F64_LE"}}
             per_ch[ch].append(name)
 
     for ch in ("L", "R"):
@@ -170,6 +170,14 @@ def biquad_response_db(filters, freqs, rate=48000):
 
 def log_freqs(n=96, lo=20.0, hi=20000.0):
     return np.geomspace(lo, hi, n)
+
+
+def headroom_db(peq, rate=48000):
+    """Pre-gain that keeps a PEQ preset from clipping: minus the largest boost of
+    any channel (0 if the filters only cut)."""
+    freqs = log_freqs(400, 10.0, 22000.0)
+    peak = max((float(np.max(biquad_response_db(f, freqs, rate))) for f in (peq or {}).values() if f), default=0.0)
+    return round(-max(0.0, peak), 1)
 
 
 # ── FIR files (Acourate .dbl = raw FLOAT64LE, or WAV) ─────────────────────────

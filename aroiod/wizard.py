@@ -15,7 +15,10 @@ import uuid
 
 import numpy as np
 
+from . import dsp
 from . import roomcorr as rc
+from .config import Invalid, _check_filter
+from .store import atomic_write_json
 
 log = logging.getLogger("aroiod.wizard")
 
@@ -228,11 +231,55 @@ class RoomWizard:
             result["delay_ms"] = {"L": round(max(0.0, diff_ms), 3), "R": round(max(0.0, -diff_ms), 3)}
             result["distance_cm"] = round(abs(diff_ms) * 34.3, 1)
             result["fmax"] = fmax
+            for c in result["channels"].values():
+                c["auto_filters"] = [dict(f) for f in c["filters"]]
             self.result = result
             self.step = "result"
             self._start_compare()
         finally:
             self.busy = None
+
+    def a_set_filters(self, channel, filters):
+        """Manual adjustment of the calculated filters. channel: L, R or both."""
+        if not self.result:
+            raise ValueError("Es gibt noch kein Ergebnis.")
+        if channel not in ("L", "R", "both"):
+            raise ValueError("Kanal L, R oder both")
+        if not isinstance(filters, list) or len(filters) > 20:
+            raise ValueError("Höchstens 20 Filter")
+        try:
+            clean = [_check_filter(f"filters[{i}]", f) for i, f in enumerate(filters)]
+        except Invalid as exc:
+            raise ValueError(exc.message) from None
+        for ch in (("L", "R") if channel == "both" else (channel,)):
+            self._set_channel_filters(ch, [dict(f) for f in clean])
+        self._refresh_preview()
+
+    def a_reset_filters(self):
+        if not self.result:
+            raise ValueError("Es gibt noch kein Ergebnis.")
+        for ch, c in self.result["channels"].items():
+            self._set_channel_filters(ch, [dict(f) for f in c["auto_filters"]])
+        self._refresh_preview()
+
+    def _set_channel_filters(self, ch, filters):
+        r = self.result
+        c = r["channels"][ch]
+        freqs = np.asarray(r["freqs"])
+        before, target = np.asarray(c["before"]), np.asarray(c["target"])
+        after = before + dsp.biquad_response_db(filters, freqs)
+        band = (freqs >= rc.FMIN) & (freqs <= r["fmax"])
+        c["filters"] = filters
+        c["after"] = np.round(after, 2).tolist()
+        c["deviation_after"] = round(float(np.sqrt(np.mean((after[band] - target[band]) ** 2))), 2)
+        c["manual"] = filters != c["auto_filters"]
+
+    def _refresh_preview(self):
+        r = self.result
+        r["headroom_db"] = dsp.headroom_db({ch: c["filters"] for ch, c in r["channels"].items()})
+        if self.comparing:
+            active = self.device.config.get("dsp.active_preset") == "preview"
+            self.device.save_preset(self._preset("preview", "Neue Messung (Vorschau)"), activate=active)
 
     def _preset(self, pid, name):
         r = self.result
@@ -268,7 +315,13 @@ class RoomWizard:
         name = (name or "").strip()[:40] or "Raumkorrektur"
         pid = "rc-" + uuid.uuid4().hex[:8]
         self._end_compare(restore=False)
-        self.device.save_preset(self._preset(pid, name), activate=True)
+        r = self.result
+        atomic_write_json(self.device.data / "measurements" / f"{pid}.json", {
+            "freqs": r["freqs"], "fmax": r["fmax"], "character": self.character,
+            "channels": {ch: {k: c[k] for k in ("before", "target", "auto_filters")} for ch, c in r["channels"].items()}})
+        preset = self._preset(pid, name)
+        preset["measurement"] = pid
+        self.device.save_preset(preset, activate=True)
         self.device.patch_config({"dsp": {"character": self.character, "enabled": True}})
         self.saved = {"id": pid, "name": name}
         self.step = "result"

@@ -1,0 +1,5 @@
+# Profile "aroio": Aroio DAC boards (no HAT EEPROM), as in aroio-ng
+dtoverlay=hifiberry-dacplus
+dtoverlay=gpio-ir,gpio_pin=25
+dtoverlay=act-led,gpio=22
+dtparam=act_led_trigger=heartbeat

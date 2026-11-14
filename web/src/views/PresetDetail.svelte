@@ -2,6 +2,7 @@
   import { Trash2, Check } from '@lucide/svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import FrequencyChart from '../components/FrequencyChart.svelte';
+  import PeqEditor from '../components/PeqEditor.svelte';
   import Dialog from '../components/Dialog.svelte';
   import { api } from '../lib/api.js';
   import { app, toast } from '../lib/state.svelte.js';
@@ -10,6 +11,23 @@
   import { t } from '../lib/i18n.svelte.js';
   let { params } = $props();
   let preset = $state(null), curve = $state(null), name = $state(''), error = $state(null), confirmDelete = $state(false);
+  let editing = $state(false), measurement = $state(null), original = null, editorKey = $state(0), dirty = $state(false);
+
+  async function startEdit() {
+    original = { peq: JSON.parse(JSON.stringify(preset.peq)), gain_db: preset.gain_db };
+    measurement = await api.get(`/dsp/presets/${params.id}/measurement`).catch(() => null);
+    editing = true;
+    dirty = false;
+  }
+  async function savePeq(_ch, _filters, all) {
+    try { await api.patch('/dsp/presets/' + params.id, { peq: all }); dirty = true; }
+    catch (e) { toast(e.message, 'danger'); }
+  }
+  async function undo() {
+    try { await api.patch('/dsp/presets/' + params.id, original); await load(); editorKey++; dirty = false; toast(t('Änderungen zurückgenommen.')); }
+    catch (e) { toast(e.message, 'danger'); }
+  }
+  async function done() { editing = false; await load(); }
   const active = $derived(app.topics.dsp?.active_preset === params.id);
   const expert = $derived(app.topics.device?.expert_mode);
 
@@ -40,10 +58,27 @@
       {#if active}<p class="notice ok"><Check size={18} aria-hidden="true" />{t('Diese Einstellung ist gerade aktiv.')}</p>
       {:else}<button class="btn primary" type="button" onclick={() => api.post(`/dsp/presets/${params.id}/activate`).catch((e) => toast(e.message, 'danger'))}>{t('Verwenden')}</button>{/if}
 
-      {#if curve}
-        <FrequencyChart freqs={curve.freqs} ymin={-20} ymax={10} summary={t('Wirkung der Einstellung über die Frequenz')}
-          series={[{ label: t('Links'), values: curve.channels.L, color: 'var(--brand-ink)', width: 3 },
-                   { label: t('Rechts'), values: curve.channels.R, color: 'var(--warn)', dash: '6 4', width: 2 }]} />
+      {#if editing}
+        <section class="card stack" aria-labelledby="ed-h">
+          <h2 id="ed-h">{t('Filter bearbeiten')}</h2>
+          <p class="muted small">{active ? t('Jede Änderung ist sofort zu hören.') : t('Wähle „Verwenden“, um die Änderungen zu hören.')}</p>
+          {#key editorKey}
+            <PeqEditor peq={preset.peq} {measurement} fmax={measurement ? measurement.fmax * 2 : 20000} onchange={savePeq} />
+          {/key}
+          <div class="row wrap">
+            <button class="btn primary" type="button" onclick={done}>{t('Fertig')}</button>
+            <button class="btn" type="button" disabled={!dirty} onclick={undo}>{t('Rückgängig')}</button>
+          </div>
+        </section>
+      {:else}
+        {#if curve}
+          <FrequencyChart freqs={curve.freqs} ymin={-20} ymax={10} summary={t('Wirkung der Einstellung über die Frequenz')}
+            series={[{ label: t('Links'), values: curve.channels.L, color: 'var(--brand-ink)', width: 3 },
+                     { label: t('Rechts'), values: curve.channels.R, color: 'var(--warn)', dash: '6 4', width: 2 }]} />
+        {/if}
+        {#if preset.kind === 'peq'}
+          <button class="btn" type="button" onclick={startEdit}>{t('Filter bearbeiten')}</button>
+        {/if}
       {/if}
 
       <form class="field" onsubmit={rename}>
@@ -59,7 +94,7 @@
         {#if preset.delay_ms?.L || preset.delay_ms?.R}<div><dt>{t('Verzögerung')}</dt><dd>L {preset.delay_ms.L} ms · R {preset.delay_ms.R} ms</dd></div>{/if}
       </dl>
 
-      {#if expert && preset.peq}
+      {#if expert && preset.peq && !editing}
         {#each ['L', 'R'] as ch}
           <h2 class="section-title">{ch === 'L' ? t('Filter links') : t('Filter rechts')}</h2>
           <table class="filters"><thead><tr><th scope="col">{t('Typ')}</th><th scope="col">{t('Frequenz')}</th><th scope="col">{t('Pegel')}</th><th scope="col">Q</th></tr></thead>
@@ -88,4 +123,6 @@
   .filters th, .filters td { text-align: right; padding: 8px; border-bottom: 1px solid var(--border); }
   .filters th:first-child, .filters td:first-child { text-align: left; }
   .btn.danger { align-self: flex-start; }
+  .wrap { flex-wrap: wrap; }
+  .stack > .btn:not(.block) { align-self: flex-start; }
 </style>

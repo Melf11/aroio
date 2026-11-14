@@ -17,10 +17,12 @@ from .wizard import RoomWizard
 
 
 def create(data_dir, sim=True, model="AroioLT", board="pi4", fast=False, mic_mode="none"):
-    if not sim:
-        raise SystemExit("Die Anbindung an echte Hardware folgt in Phase 1. Bitte mit --sim starten.")
-    from .sim import SimWorld
-    world = SimWorld(model=model, board=board, fast=fast, mic_mode=mic_mode)
+    if sim:
+        from .sim import SimWorld
+        world = SimWorld(model=model, board=board, fast=fast, mic_mode=mic_mode)
+    else:
+        from .real import RealWorld
+        world = RealWorld()
     hub = Hub()
     device = Device(data_dir, world, hub)
     world.attach(device)
@@ -47,6 +49,8 @@ def main():
     app = build_app(device, args.static)
 
     async def on_start(_app):
+        if hasattr(device.world, "start"):
+            device.world.start()
         device.start()
         device.wizard.publish()
         device.world.publish_sim()

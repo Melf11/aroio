@@ -164,6 +164,7 @@
             <button onclick={() => ev('key', { key: 'play_pause' })} aria-label="Taste Play/Pause">{#if p?.state === 'playing'}<Pause size={16} />{:else}<Play size={16} />{/if}</button>
           </div>
         </div>
+        <button class:on={s.usb_dac} onclick={() => ev('usb_dac', { on: !s.usb_dac })}>USB-DAC {s.usb_dac ? 'abziehen' : 'einstecken'}</button>
         <h3>Fernbedienung (IR)</h3>
         <div class="ir">{#each IR as [k, l]}<button onclick={() => ev('key', { key: k })}>{l}</button>{/each}</div>
       </section>

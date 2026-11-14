@@ -34,7 +34,7 @@ def test_peq_fir_and_resampling():
         dsp.camilla_config(fir, 44100)
     cfg = dsp.camilla_config(fir, 96000, capture_rate=44100, resampler="best", fir_dir="/data/filters")
     assert cfg["devices"]["capture_samplerate"] == 44100
-    assert cfg["devices"]["resampler"]["profile"] == "VeryAccurate"
+    assert cfg["devices"]["resampler"]["profile"] == "Accurate"
     assert cfg["filters"]["fir_L"]["parameters"]["filename"] == "/data/filters/a.dbl"
 
 

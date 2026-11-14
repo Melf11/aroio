@@ -64,3 +64,29 @@ def fir_limit(board, rate):
     table = BOARDS[board]["fir_taps"]
     best = min(table, key=lambda r: abs(r - rate))
     return int(table[best] * best / rate) if rate > best else table[best]
+
+
+# DAC driver = device tree overlay(s) on the boot partition (aroio.txt). "auto": HATs
+# with EEPROM (Raspberry Pi DAC+/DAC Pro/DigiAMP+, most HiFiBerry) announce themselves.
+# Changing it needs a reboot. Keep "aroio" in sync with br2-external/board/rpi/profiles/aroio.txt.
+DAC_DRIVERS = [
+    {"id": "auto", "label": "Automatisch", "hint": "Die Aufsteckkarte meldet sich selbst (EEPROM).", "lines": []},
+    {"id": "aroio", "label": "Aroio DAC", "hint": "Aroio SU, EX, LT",
+     "lines": ["dtoverlay=hifiberry-dacplus", "dtoverlay=gpio-ir,gpio_pin=25", "dtoverlay=act-led,gpio=22",
+               "dtparam=act_led_trigger=heartbeat"]},
+    {"id": "rpi-dacplus", "label": "Raspberry Pi DAC+ / DAC Pro (IQaudio)", "hint": "", "lines": ["dtoverlay=iqaudio-dacplus"]},
+    {"id": "rpi-digiamp", "label": "Raspberry Pi DigiAMP+ (IQaudio)", "hint": "Mit Verstärker",
+     "lines": ["dtoverlay=iqaudio-dacplus,unmute_amp"]},
+    {"id": "hifiberry-dacplus", "label": "HiFiBerry DAC+ / DAC2 Pro", "hint": "", "lines": ["dtoverlay=hifiberry-dacplus"]},
+    {"id": "hifiberry-dac", "label": "HiFiBerry DAC / MiniAmp", "hint": "", "lines": ["dtoverlay=hifiberry-dac"]},
+    {"id": "hifiberry-digi", "label": "HiFiBerry Digi+ (S/PDIF)", "hint": "Digitaler Ausgang", "lines": ["dtoverlay=hifiberry-digi"]},
+    {"id": "allo-boss", "label": "Allo Boss DAC", "hint": "", "lines": ["dtoverlay=allo-boss-dac-pcm512x-audio"]},
+    {"id": "onboard", "label": "Ohne Aufsteckkarte (HDMI, Kopfhörerbuchse)", "hint": "Kopfhörerbuchse nur Pi 3 und 4",
+     "lines": ["dtparam=audio=on"]},
+]
+DAC_DRIVER_IDS = [d["id"] for d in DAC_DRIVERS]
+
+
+def dac_driver_lines(driver_id):
+    d = next((x for x in DAC_DRIVERS if x["id"] == driver_id), DAC_DRIVERS[0])
+    return ["# written by aroiod: " + d["label"]] + d["lines"]

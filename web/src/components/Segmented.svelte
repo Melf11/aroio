@@ -20,7 +20,7 @@
   fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
   legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
   .opts { display: flex; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px; gap: 2px; }
-  label { flex: 1; position: relative; display: grid; place-items: center; min-height: 40px; border-radius: 999px; font-weight: 600; cursor: pointer; text-align: center; padding: 4px 10px; font-size: .9375rem; }
+  label { flex: 1 1 auto; min-width: 0; overflow-wrap: normal; word-break: normal; hyphens: auto; position: relative; display: grid; place-items: center; min-height: 40px; border-radius: 999px; font-weight: 600; cursor: pointer; text-align: center; padding: 4px 10px; font-size: .9375rem; }
   label.on { background: var(--brand); color: var(--on-brand); }
   input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
   label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 1px; }
