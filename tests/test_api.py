@@ -365,3 +365,21 @@ async def test_setup_hotspot_stops_with_cable(client, device):
         if not (await state(client))["network"]["hotspot"]["active"]:
             break
     assert not (await state(client))["network"]["hotspot"]["active"]
+
+
+async def test_static_icons_and_missing_files(aiohttp_client, device, tmp_path):
+    """Phones ask for /apple-touch-icon.png and /favicon.ico by convention: these must be
+    images, and a missing file must be a 404, never the app page."""
+    from aroiod.web import build_app
+    (tmp_path / "icons").mkdir()
+    (tmp_path / "index.html").write_text("<div id=app></div>")
+    (tmp_path / "apple-touch-icon.png").write_bytes(b"\x89PNG\r\n\x1a\nx")
+    (tmp_path / "favicon.ico").write_bytes(b"\x00\x00\x01\x00")
+    c = await aiohttp_client(build_app(device, tmp_path))
+    r = await c.get("/apple-touch-icon.png")
+    assert r.status == 200 and r.content_type == "image/png"
+    assert (await c.get("/favicon.ico")).status == 200
+    assert (await c.get("/apple-touch-icon-precomposed-120x120.png")).status == 404
+    assert (await c.get("/icons/fehlt.png")).status == 404
+    r = await c.get("/musik/b")
+    assert r.status == 200 and "id=app" in await r.text()

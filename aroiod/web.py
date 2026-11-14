@@ -598,8 +598,8 @@ def build_app(device, static_dir=None):
                 headers = {"Cache-Control": "public, max-age=31536000, immutable"} if "/assets/" in str(target) \
                     else {"Cache-Control": "no-cache"}
                 return web.FileResponse(target, headers=headers)
-            if rel.startswith("api/"):
-                raise web.HTTPNotFound()
+            if rel.startswith("api/") or "." in rel.rsplit("/", 1)[-1]:
+                raise web.HTTPNotFound()      # a missing file is a 404, not the app page
             page = "sim.html" if rel.rstrip("/") in ("sim", "dev") and device.world.simulated else "index.html"
             return web.FileResponse(static_dir / page, headers={"Cache-Control": "no-cache"})
 

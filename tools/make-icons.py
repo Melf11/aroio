@@ -35,4 +35,9 @@ draw(192).save(OUT / "icon-192.png")
 draw(512).save(OUT / "icon-512.png")
 draw(512, radius=False, inset=0.12).save(OUT / "icon-maskable-512.png")
 draw(180, radius=False).save(OUT / "apple-touch-icon.png")   # iOS rounds itself
-print("ok", sorted(p.name for p in OUT.glob("*.png")))
+# the same at the conventional root paths: iOS, Android and browsers ask for these directly
+ROOT = OUT.parent
+draw(180, radius=False).save(ROOT / "apple-touch-icon.png")
+draw(180, radius=False).save(ROOT / "apple-touch-icon-precomposed.png")
+draw(64).save(ROOT / "favicon.ico", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+print("ok", sorted(p.name for p in OUT.glob("*.png")), sorted(p.name for p in ROOT.glob("*.png")) + ["favicon.ico"])
