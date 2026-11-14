@@ -1,0 +1,12 @@
+# Wired network: DHCP (IPv4 + IPv6). Static addresses from the app follow in phase 1
+# (aroiod writes /run/systemd/network/ files that take precedence).
+[Match]
+Name=eth* en*
+
+[Network]
+DHCP=yes
+IPv6AcceptRA=yes
+LinkLocalAddressing=yes
+
+[DHCPv4]
+UseHostname=no

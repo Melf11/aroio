@@ -58,7 +58,7 @@ def main():
     app.on_startup.append(on_start)
     web.run_app(app, host=args.host, port=args.port, access_log=logging.getLogger("aiohttp.access") if args.verbose else None,
                 print=lambda *_: logging.info(
-        "aroiod läuft auf http://localhost:%s  (Simulator: /sim)", args.port))
+        "aroiod läuft auf http://localhost:%s%s", args.port, "  (Simulator: /sim)" if args.sim else ""))
 
 
 if __name__ == "__main__":

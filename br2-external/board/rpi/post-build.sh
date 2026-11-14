@@ -21,6 +21,10 @@ if [ "${AROIO_VERSION:-dev}" = "dev" ] && [ -n "${AROIO_SSH_PUBKEY:-}" ]; then
     echo "SSH: developer key installed (dev image)"
 fi
 
+# not needed and slows down the boot by up to 2 minutes without network
+ln -sf /dev/null "$TARGET/etc/systemd/system/systemd-networkd-wait-online.service"
+mkdir -p "$TARGET/var/lib/mpd"   # Buildroot moves /var to /usr/share/factory/var (read-only root)
+
 # services that start at boot
 mkdir -p "$TARGET/etc/systemd/system/multi-user.target.wants"
 while read -r unit; do

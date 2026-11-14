@@ -16,6 +16,9 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
 [ -z "$(ls "$R/usr/share/aroio-web/assets" | grep sim || true)" ] || { echo "Simulator im Image"; fail=1; }
+grep -q "^/dev/root / auto ro" "$R/etc/fstab" || { echo "Root nicht read-only in fstab"; fail=1; }
+[ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
+ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }
 
 mkdir -p "$R/tmp/f"
 cat > "$R/tmp/gen.py" <<'PY'

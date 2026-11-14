@@ -13,7 +13,24 @@ Kept conservative on purpose, the audience is not technical:
 import math
 
 import numpy as np
-from scipy import optimize, signal
+
+
+class _Lazy:
+    """scipy takes seconds to import on a Pi and is only needed while measuring:
+    import it on first use, not at boot."""
+
+    def __init__(self, name):
+        self._name, self._mod = name, None
+
+    def __getattr__(self, attr):
+        if self._mod is None:
+            import importlib
+            self._mod = importlib.import_module(self._name)
+        return getattr(self._mod, attr)
+
+
+signal = _Lazy("scipy.signal")
+optimize = _Lazy("scipy.optimize")
 
 FMIN, FMAX_DEFAULT = 20.0, 500.0
 MAX_BOOST, MAX_CUT = 3.0, -15.0
