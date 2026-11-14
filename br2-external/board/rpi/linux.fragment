@@ -38,3 +38,5 @@ CONFIG_PKCS7_MESSAGE_PARSER=y
 CONFIG_PKCS8_PRIVATE_KEY_PARSER=y
 # iwd uses /dev/rfkill to see whether the radio is blocked
 CONFIG_RFKILL=y
+# modules uncompressed: the root file system is compressed anyway, kmod needs no xz, faster loading
+# CONFIG_MODULE_COMPRESS is not set

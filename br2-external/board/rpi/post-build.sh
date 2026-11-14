@@ -21,6 +21,13 @@ if [ "${AROIO_VERSION:-dev}" = "dev" ] && [ -n "${AROIO_SSH_PUBKEY:-}" ]; then
     echo "SSH: developer key installed (dev image)"
 fi
 
+# development images: diagnosis report on the boot partition 90 s after boot (readable without network)
+rm -f "$TARGET/etc/systemd/system/timers.target.wants/aroio-boot-report.timer"
+if [ "${AROIO_VERSION:-dev}" = "dev" ]; then
+    mkdir -p "$TARGET/etc/systemd/system/timers.target.wants"
+    ln -sf /usr/lib/systemd/system/aroio-boot-report.timer "$TARGET/etc/systemd/system/timers.target.wants/aroio-boot-report.timer"
+fi
+
 # not needed and slows down the boot by up to 2 minutes without network
 ln -sf /dev/null "$TARGET/etc/systemd/system/systemd-networkd-wait-online.service"
 # iwd keeps known WLANs in /var/lib/iwd: point it to the data partition

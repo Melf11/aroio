@@ -1,0 +1,25 @@
+#!/bin/sh
+# Development images: writes a diagnosis report to the boot partition (FAT), so it can be
+# read on any computer without network or cable: aroio-diagnose.txt
+MNT=/run/aroio/bootreport
+mkdir -p "$MNT"
+mount -t vfat /dev/mmcblk0p1 "$MNT" || exit 0
+OUT="$MNT/aroio-diagnose.txt"
+{
+    echo "== AroioOS $(cat /etc/aroio-version) – $(date) – $(cat /proc/device-tree/model 2>/dev/null | tr -d '\0')"
+    echo "== uptime"; uptime
+    echo "== systemd: fehlgeschlagene Dienste"; systemctl --failed --no-legend
+    echo "== Netzwerk"; ip addr; echo; iw dev 2>&1
+    echo "== rfkill"; cat /sys/class/rfkill/*/name /sys/class/rfkill/*/soft /sys/class/rfkill/*/hard 2>&1
+    echo "== Soundkarten"; cat /proc/asound/cards
+    echo "== Module"; lsmod
+    echo "== aroiod"; journalctl -b -u aroiod --no-pager | tail -60
+    echo "== iwd / Hotspot"; journalctl -b -u iwd -u aroio-hotspot -u aroio-portal-dns --no-pager | tail -60
+    echo "== camilladsp"; journalctl -b -u camilladsp --no-pager | tail -30
+    echo "== Warnungen und Fehler"; journalctl -b -p warning --no-pager | tail -120
+    echo "== Kernel (brcm, snd, mmc)"; dmesg | grep -iE "brcm|snd|mmc|firmware|error" | tail -60
+    echo "== Startzeit"; systemd-analyze 2>&1; systemd-analyze blame 2>&1 | head -15
+} > "$OUT.tmp" 2>&1
+mv "$OUT.tmp" "$OUT"
+sync
+umount "$MNT"

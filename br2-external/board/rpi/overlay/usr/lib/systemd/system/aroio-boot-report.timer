@@ -1,0 +1,8 @@
+[Unit]
+Description=Diagnosis report 90 seconds after boot (development images)
+
+[Timer]
+OnBootSec=90s
+
+[Install]
+WantedBy=timers.target

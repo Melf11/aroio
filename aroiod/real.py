@@ -636,12 +636,32 @@ async def _output_ok(*cmd):
 
 
 def _ip_addresses():
+    """IPv4 address per interface. `ip -j` (iproute2), falling back to parsing plain
+    `ip -4 -o addr` output (works with BusyBox too)."""
     try:
         out = subprocess.run(["ip", "-j", "-4", "addr"], capture_output=True, text=True, timeout=2).stdout
         return {i["ifname"]: a["local"] for i in json.loads(out) for a in i.get("addr_info", [])
                 if i["ifname"] != "lo"}
     except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    try:
+        out = subprocess.run(["ip", "-4", "-o", "addr"], capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
         return {}
+    return parse_ip_addr(out)
+
+
+def parse_ip_addr(text):
+    """`ip -4 -o addr` (iproute2) or `ip -4 addr` (BusyBox) -> {ifname: address}"""
+    out, iface = {}, None
+    for line in text.splitlines():
+        m = re.match(r"^\d+:\s+([^:@\s]+)", line)
+        if m:
+            iface = m[1]
+        m = re.search(r"inet (\d+\.\d+\.\d+\.\d+)", line)
+        if m and iface and iface != "lo" and iface not in out:
+            out[iface] = m[1]
+    return out
 
 
 async def _run(*cmd):

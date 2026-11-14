@@ -23,6 +23,17 @@ grep -q "^/dev/root / auto ro" "$R/etc/fstab" || { echo "Root nicht read-only in
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }
 [ "$(readlink "$R/usr/share/factory/var/lib/iwd" 2>/dev/null)" = "/data/iwd" ] || { echo "iwd speichert WLANs nicht auf /data"; fail=1; }
 
+# kernel modules must be loadable by the image's own kmod (compression!)
+KVER=$(ls "$R/usr/lib/modules" | head -1)       # the image's kernel, not the build host's
+[ -z "$(find "$R/usr/lib/modules" -name '*.ko.xz' -o -name '*.ko.zst' -o -name '*.ko.gz' | head -1)" ] \
+    || { echo "Kernel-Module komprimiert (kmod im Image kann sie evtl. nicht laden)"; fail=1; }
+for m in snd-aloop brcmfmac cfg80211 snd-soc-pcm512x-i2c snd-usb-audio; do
+    chroot "$R" /sbin/modprobe -n -S "$KVER" "$m" >/dev/null 2>&1 || { echo "Modul nicht ladbar: $m"; fail=1; }
+done
+chroot "$R" /sbin/ip -j -4 addr >/dev/null 2>&1 || { echo "ip -j fehlt (iproute2)"; fail=1; }
+[ -L "$R/etc/systemd/system/timers.target.wants/aroio-boot-report.timer" ] || [ "$(cat "$R/etc/aroio-version")" != "dev" ] \
+    || { echo "Diagnosebericht fehlt im Entwicklungs-Image"; fail=1; }
+
 mkdir -p "$R/tmp/f"
 cat > "$R/tmp/gen.py" <<'PY'
 import json, sys, numpy as np

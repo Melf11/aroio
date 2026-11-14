@@ -1,0 +1,6 @@
+[Unit]
+Description=Write diagnosis report to the boot partition (development images)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/aroio/boot-report

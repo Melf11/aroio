@@ -135,3 +135,14 @@ def test_parse_iw_scan():
     nets = real.parse_iw_scan(IW_SCAN)
     assert nets == [{"ssid": "Zuhause", "signal": -48, "secure": True},
                     {"ssid": "Gast", "signal": -70, "secure": False}]
+
+
+def test_parse_ip_addr_iproute2_and_busybox():
+    iproute = ("1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever\n"
+               "2: eth0    inet 192.168.1.57/24 brd 192.168.1.255 scope global eth0\n"
+               "3: wlan0    inet 192.168.4.1/24 scope global wlan0\n")
+    assert real.parse_ip_addr(iproute) == {"eth0": "192.168.1.57", "wlan0": "192.168.4.1"}
+    busybox = ("2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq qlen 1000\n"
+               "    inet 192.168.1.57/24 brd 192.168.1.255 scope global eth0\n"
+               "3: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500\n")
+    assert real.parse_ip_addr(busybox) == {"eth0": "192.168.1.57"}
