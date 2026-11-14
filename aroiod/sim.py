@@ -155,6 +155,7 @@ class SimWorld:
             "host_mic": self.host_mic, "internet": self.internet,
             "lan": self.lan, "wifi": self.wifi_ssid, "lyrion_external": self.lyrion_external,
             "spotify_needs_key": self.spotify_needs_key, "noise_next": self.noise_next, "usb_dac": self.usb_dac,
+            "hotspot": getattr(self, "hotspot_ssid", None),
             "leds": self.leds, "display": lines, "booting": self.booting, "events": self.events,
             "camilla": {"loads": self.camilla_loads, "pipeline": [s.get("names") or s.get("name") for s in (self.camilla or {}).get("pipeline", [])],
                         "samplerate": (self.camilla or {}).get("devices", {}).get("samplerate"),
@@ -288,12 +289,10 @@ class SimWorld:
         lan_cfg, wifi_cfg = cfg["network"]["lan"], cfg["network"]["wifi"]
         lan_addr = (lan_cfg["address"] if not lan_cfg["dhcp"] else "192.168.1.57") if self.lan else None
         wifi_addr = "192.168.1.88" if self.wifi_ssid else None
-        hotspot = not self.lan and not self.wifi_ssid and cfg["network"]["hotspot"] == "auto"
         return {"lan": {"connected": self.lan, "address": lan_addr, "dhcp": lan_cfg["dhcp"], "speed": "1 Gbit/s" if self.lan else None},
                 "wifi": {"connected": bool(self.wifi_ssid), "ssid": self.wifi_ssid or wifi_cfg["ssid"] or None,
                          "address": wifi_addr, "signal": -55 if self.wifi_ssid else None,
                          "enabled": wifi_cfg["enabled"] and cfg["hardware"]["onboard_wifi"]},
-                "hotspot": {"active": hotspot, "ssid": "Aroio-Einrichtung" if hotspot else None},
                 "internet": self.internet and (self.lan or bool(self.wifi_ssid)),
                 "hostname": cfg["network"]["hostname"]}
 
@@ -306,12 +305,30 @@ class SimWorld:
         await asyncio.sleep(0.2 if self.fast else 1.2)
         return [{"ssid": s, "signal": sig + random.randint(-3, 3), "secure": sec} for s, sig, sec in NETWORKS]
 
-    async def wifi_connect(self, ssid, psk):
-        await asyncio.sleep(0.2 if self.fast else 1.5)
-        if psk and len(psk) < 8:
-            raise ValueError("Das WLAN-Passwort ist falsch.")
+    # primitives for netsetup.NetSetup
+    def links(self):
+        return {"lan": self.lan, "wifi": bool(self.wifi_ssid)}
+
+    def id_suffix(self):
+        return "3F2A"
+
+    async def hotspot_start(self, ssid):
+        self.hotspot_ssid = ssid
+        self.log(f"Hotspot „{ssid}“ offen (Captive Portal)")
+
+    async def hotspot_stop(self):
+        self.hotspot_ssid = None
+        self.log("Hotspot beendet")
+
+    async def wifi_join(self, ssid, psk, timeout):
+        await asyncio.sleep(0.1 if self.fast else 2.0)
+        secure = next((sec for s, _, sec in NETWORKS if s == ssid), True)
+        if secure and (len(psk or "") < 8 or (psk or "").startswith("falsch")):   # simulator: "falsch…" = wrong
+            self.log(f"WLAN „{ssid}“: Passwort falsch")
+            return False, "Das WLAN-Passwort ist falsch."
         self.wifi_ssid = ssid
         self.log(f"WLAN verbunden: {ssid}")
+        return True, None
 
     # ── bluetooth ──
     def bluetooth_status(self, cfg):

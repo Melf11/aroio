@@ -1,0 +1,7 @@
+[Unit]
+Description=Aroio setup hotspot: DHCP and captive portal DNS (started by aroiod)
+After=aroio-hotspot.service
+
+[Service]
+ExecStart=/usr/sbin/dnsmasq -k --conf-file=/run/aroio/dnsmasq.conf --pid-file=
+Restart=on-failure

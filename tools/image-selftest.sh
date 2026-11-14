@@ -11,7 +11,9 @@ fail=0
 for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/upmpdcli usr/bin/bluealsa \
          usr/bin/iwctl usr/bin/rauc usr/bin/aroio-event usr/lib/aroiod/aroiod/real.py usr/share/aroio-web/index.html \
          etc/rauc/system.conf etc/rauc/keyring.pem etc/systemd/system/multi-user.target.wants/aroiod.service \
-         etc/systemd/system/multi-user.target.wants/camilladsp.service; do
+         etc/systemd/system/multi-user.target.wants/camilladsp.service \
+         usr/sbin/hostapd usr/sbin/dnsmasq usr/sbin/iw usr/lib/firmware/regulatory.db etc/iwd/main.conf \
+         usr/lib/systemd/system/aroio-hotspot.service usr/lib/systemd/system/aroio-portal-dns.service; do
     if [ -L "$R/$f" ]; then target="$R$(readlink "$R/$f")"; else target="$R/$f"; fi   # links are absolute
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
@@ -19,6 +21,7 @@ done
 grep -q "^/dev/root / auto ro" "$R/etc/fstab" || { echo "Root nicht read-only in fstab"; fail=1; }
 [ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }
+[ "$(readlink "$R/usr/share/factory/var/lib/iwd" 2>/dev/null)" = "/data/iwd" ] || { echo "iwd speichert WLANs nicht auf /data"; fail=1; }
 
 mkdir -p "$R/tmp/f"
 cat > "$R/tmp/gen.py" <<'PY'

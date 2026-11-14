@@ -72,6 +72,7 @@ class Device:
         self.pending_migration = None
         self.reboot_required = False
         self.wizard = None          # set by app (wizard.RoomWizard)
+        self.netsetup = None        # set by app (netsetup.NetSetup)
 
     # ── helpers ──────────────────────────────────────────────────────────────
     @property
@@ -93,6 +94,8 @@ class Device:
         return self.pos_base
 
     def start(self):
+        if self.netsetup:
+            self.netsetup.start()
         self.world.set_volume(0.0 if self.fixed_level else volume_db(self.volume))
         self.publish_all()
         self.apply_dsp()
@@ -193,7 +196,10 @@ class Device:
         })
 
     def publish_network(self):
-        self.hub.publish("network", self.world.network_status(self.config.data))
+        status = self.world.network_status(self.config.data)
+        if self.netsetup:
+            status.update(self.netsetup.status())
+        self.hub.publish("network", status)
 
     def publish_bluetooth(self):
         self.hub.publish("bluetooth", self.world.bluetooth_status(self.config.data))
@@ -688,6 +694,9 @@ class Device:
         self.queue, self.index, self.source, self.meta = [], -1, None, None
         self.compare_bypass = False
         self.pending_migration = None
+        if self.netsetup:
+            self.netsetup.started = time.monotonic()      # grace period like after boot
+            self.netsetup.attempt = {"state": "idle", "ssid": None, "error": None, "at": None}
         self.config.reset()
         self.secrets.delete_prefix("")
         self.library.favorites.clear()

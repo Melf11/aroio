@@ -30,6 +30,16 @@ STARTED = web.AppKey("started", float)
 
 
 @web.middleware
+async def captive(request, handler):
+    """Setup hotspot: send captive portal probes and foreign hosts to the setup page."""
+    ns = request.app[DEVICE].netsetup
+    if ns and ns.is_foreign_host(request.host, request.path):
+        from .netsetup import HOTSPOT_ADDRESS, PORTAL_PATH
+        raise web.HTTPFound(f"http://{HOTSPOT_ADDRESS}{PORTAL_PATH}", headers={"Cache-Control": "no-store"})
+    return await handler(request)
+
+
+@web.middleware
 async def errors(request, handler):
     try:
         return await handler(request)
@@ -346,7 +356,7 @@ async def service_logout(request):
 
 @routes.post(A + "/network/scan")
 async def network_scan(request):
-    return ok({"networks": await dev(request).world.wifi_scan()})
+    return ok({"networks": await dev(request).netsetup.scan()})
 
 
 @routes.post(A + "/network/wifi")
@@ -355,11 +365,9 @@ async def network_wifi(request):
     ssid, psk = str(data.get("ssid", "")).strip(), str(data.get("password", ""))
     if not ssid:
         raise Invalid("network.wifi.ssid", "Bitte ein WLAN wählen")
-    await d.world.wifi_connect(ssid, psk)
-    d.secrets.set("wifi.psk", psk)
-    d.patch_config({"network": {"wifi": {"ssid": ssid, "enabled": True}}})
+    result = await d.netsetup.connect(ssid, psk)
     d.publish_network()
-    return ok()
+    return ok(result)
 
 
 @routes.post(A + "/bluetooth/pairing")
@@ -575,7 +583,7 @@ async def sim_event(request):
 # ── app ──────────────────────────────────────────────────────────────────────
 
 def build_app(device, static_dir=None):
-    app = web.Application(middlewares=[errors], client_max_size=64 * 1024 * 1024)
+    app = web.Application(middlewares=[captive, errors], client_max_size=64 * 1024 * 1024)
     app[DEVICE] = device
     app[WORLD] = device.world
     app[STARTED] = time.monotonic()

@@ -392,20 +392,76 @@ class RealWorld:
         addrs = _ip_addresses()
         lan = next((a for n, a in addrs.items() if n.startswith(("eth", "end", "enx"))), None)
         wifi = addrs.get("wlan0")
+        if wifi == HOTSPOT_IP:
+            wifi = None
         return {"lan": {"connected": bool(lan), "address": lan, "dhcp": cfg["network"]["lan"]["dhcp"], "speed": None},
                 "wifi": {"connected": bool(wifi), "ssid": cfg["network"]["wifi"]["ssid"] or None, "address": wifi,
                          "signal": None, "enabled": cfg["network"]["wifi"]["enabled"]},
-                "hotspot": {"active": False, "ssid": None},
                 "internet": bool(lan or wifi), "hostname": cfg["network"]["hostname"]}
 
     def network_apply(self, net):
         log.info("network config: systemd-networkd/iwd in phase 1")
 
-    async def wifi_scan(self):
-        raise ValueError("WLAN-Suche folgt in Phase 1 (iwd).")
+    # primitives for netsetup.NetSetup
+    def links(self):
+        addrs = _ip_addresses()
+        lan = any(n.startswith(("eth", "end", "enx")) and _carrier(n) for n in addrs)
+        wifi = bool(addrs.get(WLAN)) and addrs.get(WLAN) != HOTSPOT_IP
+        return {"lan": lan, "wifi": wifi, "wlan_present": Path(f"/sys/class/net/{WLAN}").exists()}
 
-    async def wifi_connect(self, ssid, psk):
-        raise ValueError("WLAN-Verbindung folgt in Phase 1 (iwd).")
+    def id_suffix(self):
+        for iface in (WLAN, "eth0", "end0"):
+            try:
+                mac = Path(f"/sys/class/net/{iface}/address").read_text().strip()
+                return mac.replace(":", "")[-4:].upper()
+            except OSError:
+                continue
+        return "0000"
+
+    async def wifi_scan(self):
+        if not Path(f"/sys/class/net/{WLAN}").exists():
+            raise ValueError("Dieser Aroio hat kein WLAN (oder es ist ausgeschaltet).")
+        await _run("ip", "link", "set", WLAN, "up")
+        out = await _output("iw", "dev", WLAN, "scan")
+        return parse_iw_scan(out)
+
+    async def hotspot_start(self, ssid):
+        run = Path("/run/aroio")
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "hostapd.conf").write_text(HOSTAPD_CONF.format(iface=WLAN, ssid=ssid))
+        (run / "dnsmasq.conf").write_text(DNSMASQ_CONF.format(iface=WLAN, ip=HOTSPOT_IP))
+        await _run("systemctl", "stop", "iwd.service")
+        await _run("ip", "link", "set", WLAN, "up")
+        await _run("ip", "addr", "replace", f"{HOTSPOT_IP}/24", "dev", WLAN)
+        await _run("systemctl", "start", "aroio-hotspot.service", "aroio-portal-dns.service")
+
+    async def hotspot_stop(self):
+        await _run("systemctl", "stop", "aroio-hotspot.service", "aroio-portal-dns.service")
+        await _run("ip", "addr", "flush", "dev", WLAN)
+        await _run("systemctl", "start", "iwd.service")
+
+    async def wifi_join(self, ssid, psk, timeout):
+        await _run("systemctl", "start", "iwd.service")
+        for _ in range(20):                     # iwd needs a moment to take over the interface
+            if (await _output_ok("iwctl", "station", WLAN, "show"))[0]:
+                break
+            await asyncio.sleep(0.5)
+        await _output_ok("iwctl", "station", WLAN, "scan")
+        await asyncio.sleep(3)
+        cmd = ["iwctl"] + (["--passphrase", psk] if psk else []) + ["station", WLAN, "connect", ssid]
+        ok, out = await _output_ok(*cmd)
+        if not ok:
+            if re.search(r"passphrase|Operation failed|Invalid", out, re.I):
+                return False, "Das WLAN-Passwort ist falsch."
+            if re.search(r"not found", out, re.I):
+                return False, f"Das WLAN „{ssid}“ wurde nicht gefunden."
+            return False, f"Verbindung fehlgeschlagen: {out.strip()[:120]}"
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < timeout:  # iwd's own DHCP (EnableNetworkConfiguration)
+            if self.links()["wifi"]:
+                return True, None
+            await asyncio.sleep(0.5)
+        return False, "Verbunden, aber keine IP-Adresse bekommen (Router prüfen)."
 
     # ── bluetooth ──
     def bluetooth_status(self, cfg):
@@ -494,6 +550,89 @@ class RealWorld:
             await _run("aplay", "-q", "-D", LOOPBACK_PLAY, str(play))
             await self._proc.wait()
             return read_wav(rec)
+
+
+WLAN = "wlan0"
+HOTSPOT_IP = "192.168.4.1"
+
+HOSTAPD_CONF = """# written by aroiod: setup hotspot (open, only while nothing else is configured)
+interface={iface}
+driver=nl80211
+ssid={ssid}
+country_code=DE
+hw_mode=g
+channel=6
+ieee80211n=1
+wmm_enabled=1
+auth_algs=1
+ignore_broadcast_ssid=0
+"""
+
+DNSMASQ_CONF = """# written by aroiod: DHCP for the setup hotspot, every name resolves to the Aroio (captive portal)
+interface={iface}
+bind-interfaces
+listen-address={ip}
+no-resolv
+no-hosts
+address=/#/{ip}
+dhcp-range=192.168.4.10,192.168.4.100,255.255.255.0,10m
+dhcp-option=3,{ip}
+dhcp-option=6,{ip}
+dhcp-option=114,http://{ip}/einrichtung
+dhcp-authoritative
+"""
+
+
+def parse_iw_scan(text):
+    """`iw dev wlan0 scan` -> [{"ssid", "signal", "secure"}], strongest per SSID, hidden ones dropped."""
+    nets, cur = {}, None
+    for line in text.splitlines():
+        if line.startswith("BSS "):
+            if cur and cur.get("ssid"):
+                old = nets.get(cur["ssid"])
+                if not old or cur["signal"] > old["signal"]:
+                    nets[cur["ssid"]] = cur
+            cur = {"ssid": None, "signal": -100, "secure": False}
+            continue
+        if cur is None:
+            continue
+        s = line.strip()
+        if s.startswith("signal:"):
+            cur["signal"] = round(float(s.split()[1]))
+        elif s.startswith("SSID:"):
+            name = s[5:].strip()
+            cur["ssid"] = name if name and "\\x00" not in name else None
+        elif s.startswith(("RSN:", "WPA:")) or s.startswith("capability:") and "Privacy" in s:
+            cur["secure"] = True
+    if cur and cur.get("ssid"):
+        old = nets.get(cur["ssid"])
+        if not old or cur["signal"] > old["signal"]:
+            nets[cur["ssid"]] = cur
+    return sorted(nets.values(), key=lambda n: -n["signal"])
+
+
+def _carrier(iface):
+    try:
+        return Path(f"/sys/class/net/{iface}/carrier").read_text().strip() == "1"
+    except OSError:
+        return False
+
+
+async def _output(*cmd):
+    ok, out = await _output_ok(*cmd)
+    if not ok:
+        raise RuntimeError(f"{' '.join(cmd)}: {out.strip()}")
+    return out
+
+
+async def _output_ok(*cmd):
+    try:
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    except OSError as exc:
+        return False, str(exc)
+    out, _ = await proc.communicate()
+    text = re.sub(r"\x1b\[[0-9;]*m", "", out.decode(errors="replace"))   # iwctl colours
+    return proc.returncode == 0, text
 
 
 def _ip_addresses():

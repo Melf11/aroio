@@ -107,3 +107,31 @@ async def test_player_hook_endpoint(client, device):
     assert s["player"]["source"] == "airplay" and s["player"]["signal"]["rate_in"] == 44100
     r = await client.post("/api/v1/internal/source", json={"source": "nope", "event": "start"})
     assert r.status == 400
+
+
+IW_SCAN = """\
+BSS 3c:a6:2f:11:22:33(on wlan0)
+	freq: 2437
+	signal: -48.00 dBm
+	SSID: Zuhause
+	RSN:	 * Version: 1
+BSS 3c:a6:2f:11:22:34(on wlan0)
+	freq: 5180
+	signal: -61.00 dBm
+	SSID: Zuhause
+	RSN:	 * Version: 1
+BSS 00:11:22:33:44:55(on wlan0)
+	signal: -70.00 dBm
+	capability: ESS ShortSlotTime (0x0401)
+	SSID: Gast
+BSS 00:11:22:33:44:66(on wlan0)
+	signal: -80.00 dBm
+	SSID: \\x00\\x00\\x00
+	RSN:	 * Version: 1
+"""
+
+
+def test_parse_iw_scan():
+    nets = real.parse_iw_scan(IW_SCAN)
+    assert nets == [{"ssid": "Zuhause", "signal": -48, "secure": True},
+                    {"ssid": "Gast", "signal": -70, "secure": False}]

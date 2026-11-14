@@ -32,6 +32,10 @@ Plan, Entscheidungen und offene Fragen: [docs/NEUBAU-PLAN.md](docs/NEUBAU-PLAN.m
   gegen den virtuellen Raum. Umschaltbar im Simulator unter „Messmikrofon“. Das echte Mikrofon geht nur über
   `http://localhost`.
 
+- **WLAN-Einrichtung:** Ohne Kabel und WLAN öffnet der Aroio den Hotspot „Aroio-Einrichtung-XXXX“. Handys zeigen
+  beim Verbinden automatisch das Einrichtungsfenster (Captive Portal). Im Simulator: „Erststart ohne Netz“, dann
+  „Handy verbindet sich mit dem Hotspot“.
+
 Voraussetzungen: Python 3.11+, Node 20+. `./dev.sh` richtet `.venv` und `web/node_modules` beim ersten Start ein.
 
 ## Tests

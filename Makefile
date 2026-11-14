@@ -39,8 +39,8 @@ image: buildroot
 	$(MAKE) -C $(BR_DIR) BR2_EXTERNAL=$(CURDIR)/br2-external O=$(OUT) aroio_rpi_defconfig
 	$(MAKE) -C $(OUT) host-rust-bin
 	HOST_DIR=$(OUT)/host tools/vendor-camilladsp.sh
-	# our own packages come from this repository: copy them fresh on every build
-	$(MAKE) -C $(OUT) aroiod-dirclean aroio-web-dirclean
+	# our own packages and the boot files (config.txt, cmdline.txt) come from this repository: fresh on every build
+	$(MAKE) -C $(OUT) aroiod-dirclean aroio-web-dirclean rpi-firmware-dirclean
 	$(MAKE) -C $(OUT)
 	mkdir -p $(COPY_TO)
 	cp $(OUT)/images/sdcard.img $(COPY_TO)/aroio-sdcard.img

@@ -1,0 +1,7 @@
+[Unit]
+Description=Aroio setup hotspot (started by aroiod)
+After=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+ExecStart=/usr/sbin/hostapd /run/aroio/hostapd.conf
+Restart=on-failure

@@ -29,6 +29,7 @@
   import SettingsSystem from './views/settings/System.svelte';
   import Setup from './views/Setup.svelte';
   import Migration from './views/Migration.svelte';
+  import WifiSetup from './views/WifiSetup.svelte';
 
   const routes = [
     ['/', Player], ['/warteschlange', Queue],
@@ -72,6 +73,8 @@
     <img src="/icons/logo.svg" alt="" width="72" height="72" />
     <p>{t('Verbinde mit dem Aroio …')}</p>
   </div>
+{:else if route.path === '/einrichtung'}
+  <main id="main" class="flow"><WifiSetup /></main>
 {:else if flow === 'migration'}
   <main id="main" class="flow"><Migration /></main>
 {:else if flow === 'setup'}

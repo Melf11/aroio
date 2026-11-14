@@ -309,3 +309,59 @@ async def test_edit_peq_preset_headroom(client, device):
     assert r.status == 400
     r = await client.get("/api/v1/dsp/presets/eq1/measurement")
     assert r.status == 404
+
+
+async def test_setup_hotspot_captive_portal_and_wifi(client, device):
+    net = lambda s: s["network"]  # noqa: E731
+    await post(client, "/sim/first_boot", {"lan": False})          # no cable, no WLAN
+    for _ in range(40):
+        await asyncio.sleep(0.1)
+        if net(await state(client))["hotspot"]["active"]:
+            break
+    n = net(await state(client))
+    assert n["hotspot"]["ssid"] == "Aroio-Einrichtung-3F2A" and n["networks"]
+    assert n["hotspot"]["portal"] == "http://192.168.4.1/einrichtung"
+
+    # captive portal: probes and foreign hosts go to the setup page, the app itself does not
+    r = await client.get("/hotspot-detect.html", headers={"Host": "captive.apple.com"}, allow_redirects=False)
+    assert r.status == 302 and r.headers["Location"] == "http://192.168.4.1/einrichtung"
+    r = await client.get("/generate_204", headers={"Host": "connectivitycheck.gstatic.com"}, allow_redirects=False)
+    assert r.status == 302
+    r = await client.get("/api/v1/state", headers={"Host": "192.168.4.1"}, allow_redirects=False)
+    assert r.status == 200
+
+    # wrong password: hotspot comes back with the reason
+    body = await post(client, "/network/wifi", {"ssid": "Zuhause", "password": "kurz"})
+    assert body["switching"] is True
+    for _ in range(40):
+        await asyncio.sleep(0.1)
+        n = net(await state(client))
+        if n["setup"]["state"] == "failed" and n["hotspot"]["active"]:
+            break
+    assert n["setup"]["error"] == "Das WLAN-Passwort ist falsch."
+
+    # right password: connected, hotspot stays off, credentials kept
+    await post(client, "/network/wifi", {"ssid": "Zuhause", "password": "geheim1234"})
+    for _ in range(40):
+        await asyncio.sleep(0.1)
+        n = net(await state(client))
+        if n["setup"]["state"] == "connected":
+            break
+    assert not n["hotspot"]["active"] and n["wifi"]["connected"]
+    assert device.config.get("network.wifi.ssid") == "Zuhause" and device.secrets.get("wifi.psk") == "geheim1234"
+    r = await client.get("/hotspot-detect.html", headers={"Host": "captive.apple.com"}, allow_redirects=False)
+    assert r.status != 302
+
+
+async def test_setup_hotspot_stops_with_cable(client, device):
+    await post(client, "/sim/first_boot", {"lan": False})
+    for _ in range(40):
+        await asyncio.sleep(0.1)
+        if (await state(client))["network"]["hotspot"]["active"]:
+            break
+    await post(client, "/sim/lan", {"on": True})
+    for _ in range(40):
+        await asyncio.sleep(0.1)
+        if not (await state(client))["network"]["hotspot"]["active"]:
+            break
+    assert not (await state(client))["network"]["hotspot"]["active"]

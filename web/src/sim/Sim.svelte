@@ -122,7 +122,7 @@
       </div>
       <label class="lbl">Seite
         <select bind:value={path}>
-          {#each [['/', 'Start'], ['/musik', 'Musik'], ['/klang', 'Klang'], ['/klang/raumkorrektur', 'Raumkorrektur'], ['/einstellungen', 'Einstellungen'], ['/einstellungen/dienste', 'Dienste']] as [v, l]}<option value={v}>{l}</option>{/each}
+          {#each [['/', 'Start'], ['/musik', 'Musik'], ['/klang', 'Klang'], ['/klang/raumkorrektur', 'Raumkorrektur'], ['/einstellungen', 'Einstellungen'], ['/einstellungen/dienste', 'Dienste'], ['/einrichtung', 'WLAN-Einrichtung (Captive Portal)']] as [v, l]}<option value={v}>{l}</option>{/each}
         </select></label>
       <div class="btns two">
         <button onclick={() => reloadKey++}><RefreshCw size={16} />App neu laden</button>
@@ -201,6 +201,10 @@
       <section>
         <h2>Netzwerk und Dienste</h2>
         <button class:on={s.lan} onclick={() => ev('lan', { on: !s.lan })}>LAN-Kabel {s.lan ? 'ziehen' : 'stecken'}</button>
+        {#if s.hotspot}
+          <p class="hint">Hotspot „{s.hotspot}“ ist offen.</p>
+          <button onclick={() => { path = '/einrichtung'; reloadKey++; }}>Handy verbindet sich mit dem Hotspot (Anmeldefenster öffnet sich)</button>
+        {/if}
         <button disabled={!s.wifi} onclick={() => ev('wifi_drop')}>WLAN trennen</button>
         <button class:on={s.internet} onclick={() => ev('internet', { on: !s.internet })}>Internet {s.internet ? 'weg' : 'da'}</button>
         <button class:on={!!s.lyrion_external} onclick={() => ev('lyrion_external', { server: s.lyrion_external ? '' : '192.168.1.10' })}>Lyrion im Netz: {s.lyrion_external || 'keiner'}</button>

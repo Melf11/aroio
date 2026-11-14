@@ -23,6 +23,9 @@ fi
 
 # not needed and slows down the boot by up to 2 minutes without network
 ln -sf /dev/null "$TARGET/etc/systemd/system/systemd-networkd-wait-online.service"
+# iwd keeps known WLANs in /var/lib/iwd: point it to the data partition
+rm -rf "$TARGET/var/lib/iwd"
+ln -s /data/iwd "$TARGET/var/lib/iwd"
 mkdir -p "$TARGET/var/lib/mpd"   # Buildroot moves /var to /usr/share/factory/var (read-only root)
 
 # services that start at boot

@@ -146,3 +146,42 @@ test('Klangeinstellung von Hand bearbeiten', async ({ page, request }) => {
   await page.getByRole('button', { name: 'Fertig' }).click();
   await expect(page.getByRole('button', { name: 'Filter bearbeiten' })).toBeVisible();
 });
+
+test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, request }) => {
+  test.setTimeout(90000);
+  await fresh(request);
+  await api(request, '/sim/first_boot', { lan: false });
+  const net = async () => (await (await api(request, '/state', undefined, 'get')).json()).network;
+  await expect.poll(async () => (await net()).hotspot.active, { timeout: 15000 }).toBe(true);
+
+  // what the phone sees: any page while on the hotspot -> setup page
+  const probe = await request.get('/hotspot-detect.html', { headers: { Host: 'captive.apple.com' }, maxRedirects: 0 });
+  expect(probe.status()).toBe(302);
+
+  await page.goto('/einrichtung');
+  await expect(page.getByRole('heading', { name: 'Mit dem WLAN verbinden' })).toBeVisible();
+  await axe(page, 'wifi-1');
+  await page.getByRole('radio', { name: /^Zuhause (sehr gut|gut|mittel|schwach)/ }).check();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByLabel('WLAN-Passwort').fill('falsch-1234');
+  await axe(page, 'wifi-2');
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await axe(page, 'wifi-3');
+  await page.getByRole('button', { name: 'Jetzt verbinden' }).click();
+  await expect(page.getByRole('heading', { name: 'Der Aroio verbindet sich' })).toBeVisible();
+  await axe(page, 'wifi-4');
+
+  // wrong password: hotspot is back, the page explains why after reconnecting
+  await expect.poll(async () => (await net()).setup.state, { timeout: 15000 }).toBe('failed');
+  await expect.poll(async () => (await net()).hotspot.active, { timeout: 15000 }).toBe(true);
+  await page.goto('/einrichtung');
+  await expect(page.getByRole('alert')).toContainText('Passwort ist falsch');
+
+  await page.getByRole('radio', { name: /^Zuhause (sehr gut|gut|mittel|schwach)/ }).check();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByLabel('WLAN-Passwort').fill('richtig-1234');
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Jetzt verbinden' }).click();
+  await expect.poll(async () => (await net()).setup.state, { timeout: 15000 }).toBe('connected');
+  expect((await net()).hotspot.active).toBe(false);
+});
