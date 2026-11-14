@@ -27,6 +27,7 @@
 
 <div class="page">
   <PageHeader title={t('Musik')} />
+  {#if !page?.lyrion_off}
   <form class="search" role="search" onsubmit={(e) => { e.preventDefault(); if (q.trim()) go('/musik/suche?q=' + encodeURIComponent(q.trim())); }}>
     <Search size={20} aria-hidden="true" />
     <label class="sr-only" for="msearch">{t('Musik durchsuchen')}</label>
@@ -38,14 +39,20 @@
       {#each providers as p}<li><a class="chip" href={browseHref(p.path)}>{p.label}</a></li>{/each}
     </ul>
   </nav>
+  {/if}
 
-  {#if lyrion && lyrion.status !== 'connected'}
+  {#if page?.lyrion_off}
+    <div class="empty card stack">
+      <p>{page.empty}</p>
+      <a class="btn primary" href={page.action.route}>{t('Lyrion einschalten')}</a>
+    </div>
+  {:else if lyrion && lyrion.status !== 'connected'}
     <p class="notice warn">{t('Kein Musikserver gefunden. Unter Einstellungen › Dienste › Lyrion kannst du einen eintragen oder den Musikserver auf dem Aroio starten.')}</p>
   {/if}
   {#if error}<p class="notice danger" role="alert">{error}</p>{/if}
 
   {#if page}
-    {#each page.sections as s}
+    {#each page.sections || [] as s}
       <section aria-labelledby={'sec-' + s.title}>
         <div class="sec-head">
           <h2 id={'sec-' + s.title}>{s.title}</h2>
@@ -74,4 +81,5 @@
   .sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .more { display: inline-flex; align-items: center; min-height: var(--tap); font-weight: 600; text-decoration: none; }
   .notice { margin-top: 12px; }
+  .empty { margin-top: 8px; align-items: flex-start; }
 </style>

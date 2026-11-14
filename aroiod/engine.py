@@ -54,7 +54,10 @@ class Device:
         self.config = Config(self.data / "config.json")
         self.secrets = Secrets(self.data / "secrets" / "secrets.json")
         self.library = SimLibrary(services_logged_in=self._logged_in)
-        self.library.enabled = lambda p: p == "local" or self.config.get(f"services.{p}.enabled", False)
+        # everything in "Musik" comes through Lyrion (own music, radio, TIDAL/Qobuz plugins)
+        self.library.lyrion_on = lambda: self.config.get("sources.lms.enabled", True)
+        self.library.enabled = lambda p: self.library.lyrion_on() and (
+            p in ("local", "radio", "favorites") or self.config.get(f"services.{p}.enabled", False))
         self.queue, self.index = [], -1
         self.state = "stopped"
         self.source = None
@@ -679,6 +682,7 @@ class Device:
 
     async def reboot(self):
         self.hub.notice("Der Aroio startet neu …", key="reboot")
+        self.hub.publish("system", {"rebooting": True, "since": time.time()})
         await self.world.reboot(self)
         self.reboot_required = False
         self.apply_dsp()

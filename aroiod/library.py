@@ -138,6 +138,7 @@ class SimLibrary:
                          "qobuz": Catalog("qobuz", 13, 30, 80)}
         self.logged_in = services_logged_in or (lambda provider: provider == "local")
         self.enabled = lambda provider: True
+        self.lyrion_on = lambda: True
         self.favorites = []
         self.recent = []
 
@@ -197,7 +198,15 @@ class SimLibrary:
         return True
 
     # ── pages ──
+    def lyrion_off_page(self, title="Musik"):
+        return {"title": title, "layout": "list", "items": [], "lyrion_off": True,
+                "empty": "Deine Musiksammlung, Radio, TIDAL und Qobuz kommen über Lyrion, und Lyrion ist ausgeschaltet. "
+                         "Musik kannst du trotzdem über Spotify, AirPlay, Bluetooth oder UPnP abspielen.",
+                "action": {"label": "Lyrion einschalten", "route": "/einstellungen/dienste/lyrion"}}
+
     def home(self):
+        if not self.lyrion_on():
+            return self.lyrion_off_page()
         loc = self.catalogs["local"]
         sections = []
         if self.recent:
@@ -221,6 +230,8 @@ class SimLibrary:
         parts = [p for p in path.strip("/").split("/") if p]
         if not parts:
             return self.home()
+        if not self.lyrion_on():
+            return self.lyrion_off_page(PROVIDERS.get(parts[0], "Musik"))
         provider = parts[0]
         if provider == "favorites":
             return {"title": "Favoriten", "layout": "list", "items": [self.item(i) for i in self.favorites],
@@ -300,7 +311,7 @@ class SimLibrary:
 
     def search(self, query, scope="all"):
         q = query.strip().lower()
-        if len(q) < 2:
+        if len(q) < 2 or not self.lyrion_on():
             return {"query": query, "groups": []}
         groups = []
         providers = ["local", "tidal", "qobuz"] if scope == "all" else [scope]

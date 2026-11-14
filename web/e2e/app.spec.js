@@ -61,6 +61,10 @@ test('Einrichtung beim ersten Start', async ({ page, request }) => {
   await expect(page.getByText('per Kabel verbunden')).toBeVisible();
   await page.getByRole('button', { name: 'Weiter' }).click();
   await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('heading', { name: 'Welche Soundkarte steckt im Aroio?' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: /^Aroio DAC/ })).toBeChecked();         // default
+  await axe(page, 'setup-dac');
+  await page.getByRole('button', { name: 'Weiter' }).click();
   await axe(page, 'setup-end');
   await page.getByRole('button', { name: 'Zum Aroio' }).click();
   await expect(page.getByRole('heading', { name: 'Küche' })).toBeVisible();
@@ -184,4 +188,26 @@ test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, reque
   await page.getByRole('button', { name: 'Jetzt verbinden' }).click();
   await expect.poll(async () => (await net()).setup.state, { timeout: 15000 }).toBe('connected');
   expect((await net()).hotspot.active).toBe(false);
+});
+
+
+test('Einrichtung: anderer DAC verlangt Neustart, Neustart mit Fortschritt', async ({ page, request }) => {
+  await fresh(request, { setup: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Los geht’s' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('radio', { name: /^Raspberry Pi DAC\+ \/ DAC Pro/ }).check();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('heading', { name: 'Fast fertig' })).toBeVisible();
+  await page.getByRole('button', { name: 'Neu starten und fertig' }).click();
+  await expect(page.getByRole('progressbar', { name: 'Fortschritt des Neustarts' })).toBeVisible();
+  await page.waitForTimeout(400);       // toasts fade in (0.2 s); check the settled screen
+  await axe(page, 'reboot');
+  await expect(page.getByText('Der Aroio ist wieder da.')).toBeVisible({ timeout: 20000 });
+  await expect(page.getByRole('progressbar')).toBeHidden({ timeout: 5000 });
+  const s = await (await api(request, '/state', undefined, 'get')).json();
+  expect(s.device.setup_completed).toBe(true);
+  expect(s.device.reboot_required).toBe(false);
 });

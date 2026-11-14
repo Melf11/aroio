@@ -1,6 +1,7 @@
 <script>
   import { Play, Pause, SkipForward } from '@lucide/svelte';
   import Cover from './Cover.svelte';
+  import LevelMeter from './LevelMeter.svelte';
   import { app, position, toast } from '../lib/state.svelte.js';
   import { player } from '../lib/api.js';
   import { t } from '../lib/i18n.svelte.js';
@@ -21,6 +22,7 @@
         <span class="sr-only">, {t('Wiedergabe öffnen')}</span>
       </span>
     </a>
+    <LevelMeter variant="mini" />
     <button class="icon-btn" type="button" onclick={() => act('toggle')} aria-label={p.state === 'playing' ? t('Pause') : t('Abspielen')}>
       {#if p.state === 'playing'}<Pause size={24} fill="currentColor" aria-hidden="true" />{:else}<Play size={24} fill="currentColor" aria-hidden="true" />{/if}
     </button>

@@ -148,6 +148,7 @@ class RoomWizard:
     async def a_level(self):
         """Pink noise ramps up until the mic sees about 75 dB SPL; never above the limit."""
         self.device.pause()
+        self.device.set_rate(RATE)   # measure at 48 kHz: no resampling between sweep and microphone
         self.busy = "Rauschen wird langsam lauter …"
         self.publish()
         try:
@@ -163,6 +164,7 @@ class RoomWizard:
             raise ValueError("Jetzt wird nicht gemessen.")
         p = self.current
         self.device.pause()          # the measurement needs the speakers alone
+        self.device.set_rate(RATE)
         sweep, inverse = rc.log_sweep(RATE, seconds=self.world.sweep_seconds)
         self.issue = None
         try:

@@ -146,3 +146,18 @@ def test_parse_ip_addr_iproute2_and_busybox():
                "    inet 192.168.1.57/24 brd 192.168.1.255 scope global eth0\n"
                "3: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500\n")
     assert real.parse_ip_addr(busybox) == {"eth0": "192.168.1.57"}
+
+
+def test_iwd_profile(tmp_path):
+    assert real.iwd_profile_name("Zuhause") == "Zuhause.psk"
+    assert real.iwd_profile_name("FRITZ!Box 7590 XY") == "=" + "FRITZ!Box 7590 XY".encode().hex() + ".psk"
+    assert real.iwd_profile_name("Gast", secure=False) == "Gast.open"
+    p = real.write_iwd_profile(tmp_path, "Mein WLAN", "geheim1234")
+    assert p.read_text() == "[Security]\nPassphrase=geheim1234\n"
+    assert oct(p.stat().st_mode & 0o777) == "0o600"
+
+
+def test_parse_bt_devices():
+    text = "Device A4:C3:F0:11:22:33 iPhone von Anna\nDevice F0:99:11:22:33:44 Galaxy S24\nirrelevant\n"
+    assert real.parse_bt_devices(text) == [{"address": "A4:C3:F0:11:22:33", "name": "iPhone von Anna"},
+                                           {"address": "F0:99:11:22:33:44", "name": "Galaxy S24"}]

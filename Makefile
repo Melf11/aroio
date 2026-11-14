@@ -14,7 +14,7 @@ BR_DIR ?= $(CURDIR)/buildroot
 OUT ?= $(CURDIR)/output/build
 BR2_DL_DIR ?= $(CURDIR)/output/dl
 COPY_TO ?= $(CURDIR)/output
-AROIO_PROFILE ?= generic
+AROIO_PROFILE ?= aroio
 AROIO_VERSION ?= dev
 # development images only: your public SSH key for root login (never in release builds)
 AROIO_SSH_PUBKEY ?= $(if $(filter dev,$(AROIO_VERSION)),$(shell cat $(HOME)/.ssh/id_ed25519.pub $(HOME)/.ssh/id_rsa.pub 2>/dev/null | head -1))

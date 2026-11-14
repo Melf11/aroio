@@ -73,14 +73,13 @@
           <li><label class="opt">
             <input type="radio" name="out" checked={hw.selected === 'auto'} onchange={() => save({ output: 'auto' }, t('Ausgabegerät: automatisch'))} />
             <span class="text"><span class="name">{t('Automatisch (empfohlen)')}</span>
-              <span class="muted small">{t('Zurzeit: {name}', { name: activeName })}</span></span>
+              <span class="muted small">{t('Der Aroio wählt selbst. Zurzeit: {name}', { name: activeName })}</span></span>
           </label></li>
           {#each hw.outputs as o (o.id)}
             <li><label class="opt">
               <input type="radio" name="out" checked={hw.selected === o.id} onchange={() => save({ output: o.id }, t('Ausgabegerät: {name}', { name: label(o) }))} />
               <span class="text"><span class="name">{label(o)}</span>
-                <span class="muted small">{kinds[o.kind]}{' · '}<span class="mono">{o.card}</span></span></span>
-              {#if o.id === hw.active}<span class="badge ok">{t('aktiv')}</span>{/if}
+                <span class="muted small">{kinds[o.kind]}{#if hw.selected !== 'auto' && o.id === hw.active}{' · '}{t('spielt gerade')}{/if}</span></span>
             </label></li>
           {/each}
           {#if missing}

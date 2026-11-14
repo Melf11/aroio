@@ -32,6 +32,8 @@ class NetSetup:
         self.networks = []
         self.attempt = {"state": "idle", "ssid": None, "error": None, "at": None}
         self.started = time.monotonic()
+        self.active_since = 0.0
+        self.retry_known = 300.0 if grace > 5 else 1.0
         self._task = None
         self._busy = asyncio.Lock()
 
@@ -59,10 +61,22 @@ class NetSetup:
             return
         links = self.world.links()
         mode = self.device.config.get("network.hotspot")
-        if self.active and (links["lan"] or mode == "off"):
-            await self.stop()
-        elif (not self.active and mode == "auto" and not links["lan"] and not links["wifi"]
-              and links.get("wlan_present", True) and time.monotonic() - self.started > self.grace):
+        if self.active:
+            if links["lan"] or mode == "off":
+                await self.stop()
+            elif (self.device.config.get("network.wifi.ssid") and self.attempt["state"] != "connecting"
+                  and time.monotonic() - self.active_since > self.retry_known):
+                # a WLAN is set up but was not reachable (router off?): give iwd a new chance
+                await self.stop()
+                self.started = time.monotonic()
+            return
+        # with a WLAN already set up give iwd time to find it after boot (firmware, scan, DHCP):
+        # starting the hotspot stops iwd, so starting it too early loses the known WLAN
+        grace = self.grace
+        if self.device.config.get("network.wifi.ssid") and self.grace > 5:
+            grace = max(self.grace, 90.0)
+        if (mode == "auto" and not links["lan"] and not links["wifi"] and links.get("wlan_present", True)
+                and time.monotonic() - self.started > grace):
             await self.begin()
 
     async def begin(self):
@@ -75,6 +89,7 @@ class NetSetup:
             self.ssid = f"Aroio-Einrichtung-{self.world.id_suffix()}"
             await self.world.hotspot_start(self.ssid)
             self.active = True
+            self.active_since = time.monotonic()
             log.info("setup hotspot %s started", self.ssid)
             self.device.publish_network()
 
@@ -122,6 +137,7 @@ class NetSetup:
         self.device.publish_network()
 
     def _remember(self, ssid, psk):
+        self.world.save_wifi(ssid, psk)
         self.device.secrets.set("wifi.psk", psk)
         self.device.patch_config({"network": {"wifi": {"ssid": ssid, "enabled": True}}})
 

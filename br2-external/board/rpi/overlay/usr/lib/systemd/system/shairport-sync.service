@@ -1,0 +1,12 @@
+[Unit]
+Description=AirPlay 2 receiver (shairport-sync)
+After=network.target avahi-daemon.service nqptp.service sound.target
+Requires=avahi-daemon.service nqptp.service
+
+[Service]
+ExecStart=/usr/bin/shairport-sync --configfile=/etc/shairport-sync.conf
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

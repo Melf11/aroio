@@ -5,6 +5,9 @@ export const app = $state({
   connected: false,
   everConnected: false,
   rebooting: false,
+  rebootSince: 0,
+  rebootExpected: (() => { try { return +localStorage.getItem('aroio-reboot-s') || 60; } catch { return 60; } })(),
+  showBack: false,
   topics: {
     device: null, player: null, queue: { items: [], index: -1 }, sources: [], dsp: null,
     services: null, network: null, bluetooth: null, update: null, migration: null,
@@ -40,6 +43,21 @@ export function dismiss(id) {
   if (i >= 0) app.toasts.splice(i, 1);
 }
 
+function rebootDone(oldVersion) {
+  const seconds = (Date.now() - app.rebootSince) / 1000;
+  if (seconds > 5) {
+    app.rebootExpected = Math.round(seconds);
+    try { localStorage.setItem('aroio-reboot-s', String(app.rebootExpected)); } catch { /* ignore */ }
+  }
+  app.rebooting = false;
+  app.showBack = true;
+  setTimeout(() => {
+    app.showBack = false;
+    // a new version after an update: load the new app
+    if (oldVersion && app.topics.device?.version && oldVersion !== app.topics.device.version) location.reload();
+  }, 1500);
+}
+
 export function connect() {
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -48,20 +66,18 @@ export function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'snapshot') {
+      const oldVersion = app.topics.device?.version;
       Object.assign(app.topics, msg.state);
       app.connected = true;
       app.everConnected = true;
-      if (app.rebooting) {
-        app.rebooting = false;
-        toast('Der Aroio ist wieder da.', 'ok');
-      }
+      if (app.rebooting) rebootDone(oldVersion);
     } else if (msg.type === 'topic') {
       app.topics[msg.topic] = msg.data;
-      if (msg.topic === 'system' && msg.data?.rebooting) app.rebooting = true;
-      if (msg.topic === 'system' && msg.data && !msg.data.rebooting && app.rebooting) {
-        app.rebooting = false;
-        toast('Der Aroio ist wieder da.', 'ok');
+      if (msg.topic === 'system' && msg.data?.rebooting && !app.rebooting) {
+        app.rebooting = true;
+        app.rebootSince = Date.now();
       }
+      if (msg.topic === 'system' && msg.data && !msg.data.rebooting && app.rebooting) rebootDone(null);
     } else if (msg.type === 'notice') {
       toast(msg.text, msg.level || 'info');
     }
@@ -69,7 +85,7 @@ export function connect() {
   ws.onclose = () => {
     app.connected = false;
     ws = null;
-    const delay = Math.min(10000, 500 * 2 ** retry++);
+    const delay = app.rebooting ? 1500 : Math.min(10000, 500 * 2 ** retry++);   // restart: look often
     setTimeout(connect, delay);
   };
   ws.onerror = () => ws?.close();

@@ -1,3 +1,8 @@
 camilladsp.service
 aroiod.service
 shairport-sync.service
+nqptp.service
+bluetooth.service
+bluealsa.service
+bluealsa-aplay.service
+aroio-bt-agent.service

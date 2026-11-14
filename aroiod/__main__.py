@@ -27,6 +27,8 @@ def create(data_dir, sim=True, model="AroioLT", board="pi4", fast=False, mic_mod
     device = Device(data_dir, world, hub)
     world.attach(device)
     device.wizard = RoomWizard(device)
+    from .levels import Levels
+    device.levels = Levels(device)
     from .netsetup import NetSetup
     device.netsetup = (NetSetup(device, grace=0.2, interval=0.2, switch_delay=0.05, join_timeout=2) if fast
                        else NetSetup(device, grace=3.0 if sim else 25.0, interval=1.0 if sim else 3.0))

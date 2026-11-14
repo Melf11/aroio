@@ -114,6 +114,29 @@ async def websocket(request):
     return ws
 
 
+@routes.get(A + "/levels")
+async def levels_ws(request):
+    """Live levels for the meter: {"peak": [L, R], "rms": [L, R]} in dBFS, about 15 per second."""
+    lv = dev(request).levels
+    ws = web.WebSocketResponse(heartbeat=20)
+    await ws.prepare(request)
+    q = lv.subscribe()
+
+    async def pump():
+        while True:
+            await ws.send_str(await q.get())
+
+    task = asyncio.create_task(pump())
+    try:
+        async for msg in ws:
+            if msg.type in (WSMsgType.ERROR, WSMsgType.CLOSE):
+                break
+    finally:
+        task.cancel()
+        lv.unsubscribe(q)
+    return ws
+
+
 # ── config ───────────────────────────────────────────────────────────────────
 
 @routes.get(A + "/config")

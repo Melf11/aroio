@@ -141,7 +141,7 @@ SCHEMA = {
     },
     "hardware": {
         "display_rotate": F(int, 0, choices=[0, 90, 180, 270]),
-        "dac_driver": F(str, "auto", choices=DAC_DRIVER_IDS),
+        "dac_driver": F(str, "aroio", choices=DAC_DRIVER_IDS),
         "onboard_wifi": F(bool, True),
         "onboard_bluetooth": F(bool, True),
         "ir_enabled": F(bool, True),

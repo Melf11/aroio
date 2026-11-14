@@ -9,7 +9,8 @@
   const d = $derived(app.topics.device);
   const save = async (patch) => { try { await config(patch); } catch (e) { toast(e.message, 'danger'); } };
   const status = (s) => (!s.enabled ? t('Aus') : s.logged_in ? t('Angemeldet') : t('Nicht angemeldet'));
-  const lyrionText = $derived(!sv ? '' : sv.lyrion.status !== 'connected' ? t('Kein Server gefunden') : sv.lyrion.mode === 'local' ? t('Läuft auf diesem Aroio') : t('Server {s}', { s: sv.lyrion.server }));
+  const lyrionText = $derived(!sv ? '' : sv.lyrion.status === 'off' ? t('Aus') : sv.lyrion.status !== 'connected' ? t('Kein Server gefunden') : sv.lyrion.mode === 'local' ? t('Läuft auf diesem Aroio') : t('Server {s}', { s: sv.lyrion.server }));
+  const lyrionOn = $derived(app.topics.sources.find((s) => s.id === 'lms')?.enabled);
 </script>
 
 <div class="page">
@@ -24,7 +25,9 @@
 
     <h2 class="section-title">{t('Musikbibliothek')}</h2>
     <ul class="list">
-      <li><LinkRow href="/einstellungen/dienste/lyrion" label={t('Lyrion Music Server')} value={lyrionText} /></li>
+      <li><Toggle label={t('Lyrion Music Server')} description={t('Deine Musiksammlung, Radio, TIDAL und Qobuz laufen über Lyrion. Aus, wenn du keinen Lyrion-Server hast und keinen auf dem Aroio möchtest.')}
+                  checked={lyrionOn} onchange={(v) => save({ sources: { lms: { enabled: v } } })} /></li>
+      {#if lyrionOn}<li><LinkRow href="/einstellungen/dienste/lyrion" label={t('Lyrion einrichten')} value={lyrionText} /></li>{/if}
     </ul>
 
     <h2 class="section-title">{t('Abspielen vom Handy oder Computer')}</h2>

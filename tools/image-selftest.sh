@@ -13,15 +13,33 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          etc/rauc/system.conf etc/rauc/keyring.pem etc/systemd/system/multi-user.target.wants/aroiod.service \
          etc/systemd/system/multi-user.target.wants/camilladsp.service \
          usr/sbin/hostapd usr/sbin/dnsmasq usr/sbin/iw usr/lib/firmware/regulatory.db etc/iwd/main.conf \
-         usr/lib/systemd/system/aroio-hotspot.service usr/lib/systemd/system/aroio-portal-dns.service; do
+         usr/lib/systemd/system/aroio-hotspot.service usr/lib/systemd/system/aroio-portal-dns.service \
+         usr/lib/systemd/system/iwd.service.d/aroio.conf usr/lib/systemd/system/bluetooth.service.d/aroio.conf \
+         usr/bin/bt-agent usr/bin/bluetoothctl etc/bluetooth/main.conf \
+         etc/systemd/system/multi-user.target.wants/nqptp.service \
+         etc/systemd/system/multi-user.target.wants/shairport-sync.service \
+         etc/systemd/system/multi-user.target.wants/bluetooth.service \
+         etc/systemd/system/multi-user.target.wants/bluealsa.service \
+         etc/systemd/system/multi-user.target.wants/bluealsa-aplay.service \
+         etc/systemd/system/multi-user.target.wants/aroio-bt-agent.service; do
     if [ -L "$R/$f" ]; then target="$R$(readlink "$R/$f")"; else target="$R/$f"; fi   # links are absolute
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
 [ -z "$(ls "$R/usr/share/aroio-web/assets" | grep sim || true)" ] || { echo "Simulator im Image"; fail=1; }
 grep -q "^/dev/root / auto ro" "$R/etc/fstab" || { echo "Root nicht read-only in fstab"; fail=1; }
+ls "$R"/usr/lib/firmware/brcm/BCM4345C0*.hcd >/dev/null 2>&1 || { echo "Bluetooth-Firmware Pi 4 (BCM4345C0) fehlt"; fail=1; }
+grep -q "^root:[*!]" "$R/etc/shadow" || { echo "root hat ein leeres Passwort (dropbear lehnt dann auch Schlüssel ab)"; fail=1; }
+if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then
+    [ -s "$R/root/.ssh/authorized_keys" ] || { echo "SSH-Schlüssel fehlt im Entwicklungs-Image"; fail=1; }
+fi
 [ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }
-[ "$(readlink "$R/usr/share/factory/var/lib/iwd" 2>/dev/null)" = "/data/iwd" ] || { echo "iwd speichert WLANs nicht auf /data"; fail=1; }
+grep -q "BindPaths=/data/iwd:/var/lib/iwd" "$R/usr/lib/systemd/system/iwd.service.d/aroio.conf" || { echo "iwd speichert WLANs nicht auf /data"; fail=1; }
+# every enabled unit must exist (a dangling link starts nothing, silently)
+for l in "$R"/etc/systemd/system/*.wants/*; do
+    t=$(readlink "$l"); [ "$t" = "/dev/null" ] && continue
+    [ -e "$R$t" ] || { echo "aktivierte Unit fehlt: $(basename "$l")"; fail=1; }
+done
 
 # kernel modules must be loadable by the image's own kmod (compression!)
 KVER=$(ls "$R/usr/lib/modules" | head -1)       # the image's kernel, not the build host's

@@ -1,0 +1,13 @@
+[Unit]
+Description=NQPTP: timing for AirPlay 2 (shairport-sync)
+Wants=network-online.target
+After=network.target
+Before=shairport-sync.service
+
+[Service]
+ExecStart=/usr/bin/nqptp
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

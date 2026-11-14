@@ -92,6 +92,10 @@
 
     {:else if id === 'lyrion'}
       {@const l = sv.lyrion}
+      {@const lyrionOn = app.topics.sources.find((x) => x.id === 'lms')?.enabled}
+      <ul class="list"><li><Toggle label={t('Lyrion verwenden')} description={t('Aus, wenn du keinen Lyrion-Server hast. Musik kommt dann über Spotify, AirPlay, Bluetooth oder UPnP.')}
+                                   checked={lyrionOn} onchange={(v) => save({ sources: { lms: { enabled: v } } })} /></li></ul>
+      {#if lyrionOn}
       <div class="stack">
         {#if l.status === 'connected'}
           <p class="notice ok big"><CircleCheck size={20} aria-hidden="true" /><span>{l.mode === 'local' ? t('Der Musikserver läuft auf diesem Aroio.') : t('Verbunden mit {s}{auto}', { s: l.server, auto: l.found_automatically ? ' (' + t('automatisch gefunden') + ')' : '' })}</span></p>
@@ -109,6 +113,7 @@
           <span class="hint">{t('Leer lassen, damit der Aroio den Server selbst findet.')}</span>
         </form>
       </div>
+      {/if}
     {/if}
   {/if}
 </div>

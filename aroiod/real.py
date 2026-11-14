@@ -27,7 +27,7 @@ import numpy as np
 log = logging.getLogger("aroiod.real")
 
 CAMILLA_URL = "ws://127.0.0.1:1234"
-LOOPBACK_PLAY = "hw:Loopback,0,0"      # players and aroiod's own signals write here
+LOOPBACK_PLAY = "plughw:Loopback,0,0"  # players and aroiod's own signals write here (plug: format/rate of CamillaDSP)
 SOURCE_UNITS = {"lms": "squeezelite.service", "spotify": "aroio-spotify.service",
                 "airplay": "shairport-sync.service", "upnp": "upmpdcli.service",
                 "bluetooth": "bluealsa-aplay.service", "roon": "roonbridge.service"}
@@ -77,13 +77,21 @@ def output_kind(card):
     return "hat"
 
 
-def list_outputs(cards):
-    """Every card that can play music: no loopback, no measurement microphone."""
+CARD_NAMES = {"IQaudIODAC": "Raspberry Pi DAC+ (IQaudio)", "IQaudIOCODEC": "Raspberry Pi Codec Zero (IQaudio)",
+              "DigiAMP": "Raspberry Pi DigiAMP+", "sndrpihifiberry": "HiFiBerry", "AroioDAC": "Aroio DAC",
+              "BossDAC": "Allo Boss DAC"}
+
+
+def list_outputs(cards, driver=None):
+    """Every card that can play music: no loopback, no measurement microphone.
+    Names people understand instead of the kernel's card ids."""
     out = []
     for c in cards:
         if c["id"] == "Loopback" or find_mic([c]):
             continue
-        out.append({"id": f"hw:CARD={c['id']},DEV=0", "name": c["name"], "card": c["id"], "kind": output_kind(c)})
+        kind = output_kind(c)
+        name = "Aroio DAC" if kind == "hat" and driver == "aroio" else CARD_NAMES.get(c["id"], c["name"])
+        out.append({"id": f"hw:CARD={c['id']},DEV=0", "name": name, "card": c["id"], "kind": kind})
     order = {"hat": 0, "usb": 1, "analog": 2, "hdmi": 3}
     return sorted(out, key=lambda o: (order[o["kind"]], o["card"]))
 
@@ -93,6 +101,39 @@ def resolve_output(cards, preferred):
     if preferred and preferred != "auto" and any(o["id"] == preferred for o in list_outputs(cards)):
         return preferred
     return find_dac(cards)
+
+
+def iwd_profile_name(ssid, secure=True):
+    """iwd's file name for a known network: plain SSID if it is simple, else '=' + hex."""
+    if re.fullmatch(r"[A-Za-z0-9_-]+", ssid):
+        base = ssid
+    else:
+        base = "=" + ssid.encode().hex()
+    return base + (".psk" if secure else ".open")
+
+
+def write_iwd_profile(directory, ssid, psk):
+    path = Path(directory) / iwd_profile_name(ssid, bool(psk))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = f"[Security]\nPassphrase={psk}\n" if psk else "[Settings]\nAutoConnect=true\n"
+    tmp = path.with_name(path.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(text)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+    return path
+
+
+def parse_bt_devices(text):
+    """`bluetoothctl devices [Paired|Connected]` -> [{"address", "name"}]"""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r"^Device ([0-9A-F:]{17}) (.*)$", line.strip())
+        if m:
+            out.append({"address": m[1], "name": m[2]})
+    return out
 
 
 def find_mic(cards):
@@ -284,7 +325,7 @@ class RealWorld:
         return resolve_output(read_cards(), out)
 
     def audio_outputs(self):
-        return list_outputs(read_cards())
+        return list_outputs(read_cards(), self.device.config.get("hardware.dac_driver") if self.device else None)
 
     def set_dac_driver(self, driver):
         from .models import dac_driver_lines
@@ -307,6 +348,20 @@ class RealWorld:
 
     def start(self):
         self.camilla.start()
+        self._spawn(self._bluetooth_start())
+
+    async def _bluetooth_start(self):
+        """Name, and pairing for 5 minutes after boot while nothing is paired yet."""
+        await asyncio.sleep(5)
+        cfg = self.device.config.data
+        if not cfg["sources"]["bluetooth"]["enabled"]:
+            await _output_ok("bluetoothctl", "power", "off")
+            return
+        await _output_ok("bluetoothctl", "power", "on")
+        await _output_ok("bluetoothctl", "system-alias", cfg["device"]["name"])
+        if not self.bt_devices:
+            self.bt_pairing(300)
+        self.device.publish_bluetooth()
 
     def publish_sim(self):
         pass
@@ -328,6 +383,15 @@ class RealWorld:
         files = (preset.get("fir") or {}).get(str(rate)) or {}
         path = Path(fir_dir) / files.get("L", "-")
         return path.stat().st_size // 8 if path.exists() else 0
+
+    async def levels(self):
+        if not self.camilla.state["connected"]:
+            return None
+        from .levels import clean
+        v = await self.camilla.call("GetSignalLevelsSinceLast")
+        if not v or not v.get("playback_peak"):
+            return None                       # no new chunk since the last call
+        return clean(v["playback_peak"], v["playback_rms"])
 
     def dsp_load(self, cfg, taps):
         load = self.camilla.state.get("load")
@@ -355,7 +419,8 @@ class RealWorld:
             self._spawn(_run("systemctl", "enable" if on else "disable", "--now", unit))
 
     def rename(self, name):
-        log.info("rename to %s: service configs follow in phase 1", name)
+        self._spawn(_output_ok("bluetoothctl", "system-alias", name))
+        log.info("rename to %s: AirPlay/UPnP names follow in phase 1", name)
 
     def test_tone(self, channel):
         t = np.arange(int(1.5 * 48000)) / 48000
@@ -383,6 +448,8 @@ class RealWorld:
         raise ValueError("Die Anmeldung wird mit der Lyrion-Anbindung umgesetzt (Phase 4).")
 
     def lyrion_status(self, cfg):
+        if not cfg["sources"]["lms"]["enabled"]:
+            return {"mode": "off", "server": None, "status": "off", "enabled": False}
         server = cfg["sources"]["lms"]["server"]
         return {"mode": "external" if server else "none", "server": server or None,
                 "status": "connected" if server else "not_found"}
@@ -464,16 +531,44 @@ class RealWorld:
         return False, "Verbunden, aber keine IP-Adresse bekommen (Router prüfen)."
 
     # ── bluetooth ──
+    @property
+    def bt_devices(self):
+        try:
+            paired = subprocess.run(["bluetoothctl", "devices", "Paired"], capture_output=True, text=True, timeout=3).stdout
+            connected = subprocess.run(["bluetoothctl", "devices", "Connected"], capture_output=True, text=True, timeout=3).stdout
+        except (OSError, subprocess.SubprocessError):
+            return []
+        on = {d["address"] for d in parse_bt_devices(connected)}
+        return [dict(d, connected=d["address"] in on, trusted=True) for d in parse_bt_devices(paired)]
+
     def bluetooth_status(self, cfg):
-        return {"enabled": cfg["sources"]["bluetooth"]["enabled"], "pairing": False, "pairing_until": None,
-                "devices": [], "name": cfg["device"]["name"], "codec": cfg["sources"]["bluetooth"]["codec"],
+        until = getattr(self, "_bt_pair_until", 0)
+        return {"enabled": cfg["sources"]["bluetooth"]["enabled"] and cfg["hardware"]["onboard_bluetooth"],
+                "pairing": until > time.time(), "pairing_until": until or None,
+                "devices": self.bt_devices, "name": cfg["device"]["name"], "codec": cfg["sources"]["bluetooth"]["codec"],
                 "auto_reconnect": cfg["sources"]["bluetooth"]["auto_reconnect"]}
 
     def bt_pairing(self, seconds):
-        raise ValueError("Bluetooth-Kopplung folgt in Phase 1 (BlueZ).")
+        """Visible and pairable for `seconds` (0 = stop). The agent (bt-agent) accepts without PIN."""
+        self._bt_pair_until = time.time() + seconds if seconds else 0
+        async def run():
+            if seconds:
+                await _output_ok("bluetoothctl", "pairable", "on")
+                await _output_ok("bluetoothctl", "discoverable-timeout", str(int(seconds)))
+                await _output_ok("bluetoothctl", "discoverable", "on")
+            else:
+                await _output_ok("bluetoothctl", "discoverable", "off")
+            self.device.publish_bluetooth()
+        self._spawn(run())
 
     def bt_remove(self, address):
-        raise ValueError("Bluetooth folgt in Phase 1 (BlueZ).")
+        if not re.fullmatch(r"[0-9A-F:]{17}", address):
+            raise ValueError("Ungültige Adresse")
+        self._spawn(_output_ok("bluetoothctl", "remove", address))
+
+    def save_wifi(self, ssid, psk):
+        """Known WLAN for iwd, written by aroiod itself (does not rely on iwd saving it)."""
+        write_iwd_profile("/data/iwd", ssid, psk)
 
     # ── system ──
     async def check_update(self, channel):
@@ -484,6 +579,7 @@ class RealWorld:
         yield 0  # pragma: no cover
 
     async def reboot(self, device):
+        await asyncio.sleep(1.0)                 # let the app receive "rebooting" first
         await _run("systemctl", "reboot")
 
     # ── measurement microphone ──

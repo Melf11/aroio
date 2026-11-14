@@ -3,6 +3,7 @@
   import Cover from '../components/Cover.svelte';
   import VolumeSlider from '../components/VolumeSlider.svelte';
   import QueueList from '../components/QueueList.svelte';
+  import LevelMeter from '../components/LevelMeter.svelte';
   import { app, position, toast } from '../lib/state.svelte.js';
   import { player } from '../lib/api.js';
   import { time, timeSpoken, quality, rate } from '../lib/format.js';
@@ -40,7 +41,7 @@
         <h2>{d?.name}</h2>
         <p class="muted">{t('Gerade läuft nichts.')}</p>
       </div>
-      <a class="btn primary block" href="/musik">{t('Musik auswählen')}</a>
+      {#if enabled.some((s) => s.id === 'lms')}<a class="btn primary block" href="/musik">{t('Musik auswählen')}</a>{/if}
       <h2 class="section-title">{t('Oder vom Handy abspielen')}</h2>
       <ul class="list">
         {#each enabled.filter((s) => s.id !== 'lms') as s}
@@ -64,6 +65,8 @@
           {#if sig.resampled}<span class="badge warn">{t('umgerechnet auf {r}', { r: rate(sig.rate_out) })}</span>{/if}
         </p>
       </div>
+
+      <div class="meter"><LevelMeter /></div>
 
       <div class="progress">
         {#if dur}
@@ -143,6 +146,7 @@
   .artist { font-size: 1.0625rem; }
   .quality { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 
+  .meter { padding-top: 6px; }
   .progress input { width: 100%; height: 32px; -webkit-appearance: none; appearance: none; background: transparent; margin: 0; }
   .progress input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(to right, var(--text) var(--p), var(--surface-3) var(--p)); }
   .progress input::-moz-range-track { height: 6px; border-radius: 3px; background: var(--surface-3); }

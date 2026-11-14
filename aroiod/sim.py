@@ -123,7 +123,7 @@ class SimWorld:
 
     def audio_outputs(self):
         from .real import list_outputs
-        return list_outputs(self.cards())
+        return list_outputs(self.cards(), getattr(self, "active_driver", None))
 
     def set_dac_driver(self, driver):
         from .models import dac_driver_lines
@@ -175,6 +175,29 @@ class SimWorld:
         self.log(f"CamillaDSP: {d['samplerate']} Hz"
                  + (f" (Quelle {d['capture_samplerate']} Hz, umgerechnet)" if "capture_samplerate" in d else "")
                  + f", {len(cfg['pipeline'])} Stufen")
+
+    async def levels(self):
+        """A music-like level: beat, phrases, a little difference between the channels."""
+        import math
+        from .levels import FLOOR, clean
+        d = self.device
+        now = time.time()
+        tone = self.tone and now - self.tone["at"] < 1.5
+        if tone:
+            ch = self.tone["channel"]
+            rms = [-15.0 if ch in ("L", "both") else FLOOR, -15.0 if ch in ("R", "both") else FLOOR]
+            return clean([r + 3 if r > FLOOR else FLOOR for r in rms], rms)
+        if d.state != "playing" or self.volume_db is None and not d.fixed_level:
+            return clean([FLOOR, FLOOR], [FLOOR, FLOOR])
+        vol = 0.0 if d.fixed_level else (self.volume_db or 0.0)
+        beat = 0.5 + 0.5 * math.cos(now * 2 * math.pi * 1.8) ** 8          # kick
+        phrase = 2.5 * math.sin(now * 2 * math.pi / 9.0)                   # louder and quieter parts
+        out_rms, out_peak = [], []
+        for i in range(2):
+            r = -16.0 + vol + phrase + 4.0 * beat + random.uniform(-1.2, 1.2) + (0.6 if i else 0.0)
+            out_rms.append(r)
+            out_peak.append(min(-1.0, r + 6.0 + random.uniform(0, 2)))   # well mastered: no clipping
+        return clean(out_peak, out_rms)
 
     def fir_taps(self, fir_dir, preset, rate):
         files = (preset.get("fir") or {}).get(str(rate)) or {}
@@ -273,6 +296,8 @@ class SimWorld:
         raise ValueError("Unbekannter Dienst")
 
     def lyrion_status(self, cfg):
+        if not cfg["sources"]["lms"]["enabled"]:
+            return {"mode": "off", "server": None, "status": "off", "enabled": False}
         configured = cfg["sources"]["lms"]["server"]
         mode = cfg["services"]["lyrion_local"]
         if mode == "on" or (mode == "auto" and not (configured or self.lyrion_external)):
@@ -319,6 +344,9 @@ class SimWorld:
     async def hotspot_stop(self):
         self.hotspot_ssid = None
         self.log("Hotspot beendet")
+
+    def save_wifi(self, ssid, psk):
+        self.log(f"WLAN-Profil gespeichert: {ssid}")
 
     async def wifi_join(self, ssid, psk, timeout):
         await asyncio.sleep(0.1 if self.fast else 2.0)

@@ -16,7 +16,21 @@
   let name = $state(app.topics.device?.name || 'Aroio');
   let nameError = $state('');
   let networks = $state(null), ssid = $state(''), pw = $state(''), joinError = $state(''), joining = $state(false);
-  const steps = $derived([{ title: t('Willkommen') }, { title: t('Name') }, { title: t('Netzwerk') }, { title: t('Dienste') }, { title: t('Lautsprecher') }]);
+  const steps = $derived([{ title: t('Willkommen') }, { title: t('Name') }, { title: t('Netzwerk') }, { title: t('Dienste') }, { title: t('Soundkarte') }, { title: t('Lautsprecher') }]);
+  let hw = $state(null), driver = $state(null);
+  async function loadHw() { hw = await api.get('/audio/hardware'); driver ??= hw.driver; }
+  $effect(() => { if (step === 4 && !hw) loadHw(); });
+  async function saveDriver() {
+    try {
+      await config({ hardware: { dac_driver: driver } });
+      hw = await api.get('/audio/hardware');
+      goto(5);
+    } catch (e) { toast(e.message, 'danger'); }
+  }
+  const needsReboot = $derived(!!d?.reboot_required);
+  async function finishAndReboot() {
+    try { await api.post('/system/setup-complete'); await api.post('/system/reboot'); } catch (e) { toast(e.message, 'danger'); }
+  }
 
   async function goto(i) { step = i; await focusHeading(); }
   async function saveName() {
@@ -95,6 +109,8 @@
       <p class="muted">{t('Wähle aus, was du nutzt. Alles andere bleibt aus.')}</p>
       {#if sv}
         <ul class="list">
+          <li><Toggle label={t('Lyrion (eigene Musiksammlung, Radio)')} description={t('Nur, wenn du einen Lyrion-Server hast oder einen auf dem Aroio möchtest.')}
+                      checked={app.topics.sources.find((s) => s.id === 'lms')?.enabled} onchange={(v) => save({ sources: { lms: { enabled: v } } })} /></li>
           <li><Toggle label="Spotify" checked={sv.spotify.enabled} onchange={(v) => save({ sources: { spotify: { enabled: v } } })} /></li>
           <li><Toggle label="TIDAL" checked={sv.tidal.enabled} onchange={(v) => save({ services: { tidal: { enabled: v } } })} /></li>
           <li><Toggle label="Qobuz" checked={sv.qobuz.enabled} onchange={(v) => save({ services: { qobuz: { enabled: v } } })} /></li>
@@ -107,17 +123,45 @@
       <button class="btn primary block" type="button" onclick={() => goto(4)}>{t('Weiter')}</button>
     </section>
   {:else if step === 4}
+    <form class="stack" onsubmit={(e) => { e.preventDefault(); saveDriver(); }}>
+      <h1>{t('Welche Soundkarte steckt im Aroio?')}</h1>
+      <p class="muted">{t('Bei einem Aroio von ABACUS ist es der Aroio DAC. Bei einem eigenen Raspberry Pi wähle die Aufsteckkarte, die du verwendest.')}</p>
+      {#if hw}
+        <fieldset>
+          <legend class="sr-only">{t('Soundkarte')}</legend>
+          <ul class="list">
+            {#each hw.drivers as dr (dr.id)}
+              <li><label class="opt">
+                <input type="radio" name="drv" value={dr.id} bind:group={driver} />
+                <span class="text"><span class="name">{t(dr.label)}</span>{#if dr.hint}<span class="muted small">{t(dr.hint)}</span>{/if}</span>
+              </label></li>
+            {/each}
+          </ul>
+        </fieldset>
+      {:else}<p class="muted" role="status">{t('Lädt …')}</p>{/if}
+      <button class="btn primary block" type="submit" disabled={!driver}>{t('Weiter')}</button>
+    </form>
+  {:else if step === 5}
     <section class="stack">
-      <h1>{t('Lautsprecher prüfen')}</h1>
-      <p>{t('Spiele einen kurzen Ton links und rechts. Kommt er aus dem richtigen Lautsprecher?')}</p>
-      <div class="row wrap"><button class="btn" type="button" onclick={() => tone('L')}>{t('Ton links')}</button><button class="btn" type="button" onclick={() => tone('R')}>{t('Ton rechts')}</button></div>
-      <p class="muted small">{t('Falls links und rechts vertauscht sind: Kabel am Verstärker tauschen.')}</p>
+      {#if needsReboot}
+        <h1>{t('Fast fertig')}</h1>
+        <p>{t('Damit die gewählte Soundkarte aktiv wird, startet der Aroio jetzt einmal neu. Danach kannst du die Lautsprecher unter Einstellungen › Über diesen Aroio prüfen.')}</p>
+      {:else}
+        <h1>{t('Lautsprecher prüfen')}</h1>
+        <p>{t('Spiele einen kurzen Ton links und rechts. Kommt er aus dem richtigen Lautsprecher?')}</p>
+        <div class="row wrap"><button class="btn" type="button" onclick={() => tone('L')}>{t('Ton links')}</button><button class="btn" type="button" onclick={() => tone('R')}>{t('Ton rechts')}</button></div>
+        <p class="muted small">{t('Falls links und rechts vertauscht sind: Kabel am Verstärker tauschen.')}</p>
+      {/if}
       <div class="card stack">
         <CircleCheck size={28} class="ok-ic" aria-hidden="true" />
         <h2>{t('Fertig eingerichtet')}</h2>
         <p>{t('Tipp: Mit einem Messmikrofon kann der Aroio deinen Raum einmessen und den Klang verbessern (Klang › Raum einmessen).')}</p>
       </div>
-      <button class="btn primary block" type="button" onclick={finish}>{t('Zum Aroio')}</button>
+      {#if needsReboot}
+        <button class="btn primary block" type="button" onclick={finishAndReboot}>{t('Neu starten und fertig')}</button>
+      {:else}
+        <button class="btn primary block" type="button" onclick={finish}>{t('Zum Aroio')}</button>
+      {/if}
     </section>
   {/if}
   {#if step > 0}<button class="btn ghost" type="button" onclick={() => goto(step - 1)}>{t('Zurück')}</button>{/if}
@@ -129,6 +173,11 @@
   .migrate { margin-top: 24px; align-items: flex-start; }
   label.btn { cursor: pointer; }
   label.btn:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+  fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+  .opt { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 56px; cursor: pointer; }
+  .opt input { width: 22px; height: 22px; accent-color: var(--brand-ink); flex: none; }
+  .text { display: flex; flex-direction: column; }
+  .name { font-weight: 600; }
   .chips { display: flex; gap: 8px; flex-wrap: wrap; }
   .wrap { flex-wrap: wrap; }
   :global(.ok-ic) { color: var(--ok); }

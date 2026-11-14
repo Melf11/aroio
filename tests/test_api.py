@@ -383,3 +383,42 @@ async def test_static_icons_and_missing_files(aiohttp_client, device, tmp_path):
     assert (await c.get("/icons/fehlt.png")).status == 404
     r = await c.get("/musik/b")
     assert r.status == 200 and "id=app" in await r.text()
+
+
+async def test_lyrion_can_be_switched_off(client, device):
+    await client.patch("/api/v1/config", json={"sources": {"lms": {"enabled": False}}})
+    s = await state(client)
+    assert s["services"]["lyrion"]["status"] == "off"
+    page = await (await client.get("/api/v1/library/browse", params={"path": ""})).json()
+    assert page["lyrion_off"] and page["action"]["route"] == "/einstellungen/dienste/lyrion"
+    page = await (await client.get("/api/v1/library/browse", params={"path": "local/albums"})).json()
+    assert page["lyrion_off"] and not page["items"]
+    res = await (await client.get("/api/v1/library/search", params={"q": "licht"})).json()
+    assert res["groups"] == []
+    assert not any(x["id"] == "lms" and x["enabled"] for x in s["sources"])
+    await client.patch("/api/v1/config", json={"sources": {"lms": {"enabled": True}}})
+    page = await (await client.get("/api/v1/library/browse", params={"path": ""})).json()
+    assert page["sections"]
+
+
+async def test_level_meter_stream(client, device):
+    await post(client, "/queue", {"id": "local:album:1"})
+    ws = await client.ws_connect("/api/v1/levels")
+    msg = await asyncio.wait_for(ws.receive_json(), 2)
+    assert len(msg["peak"]) == 2 and len(msg["rms"]) == 2
+    assert -60 < msg["rms"][0] < 0 and msg["peak"][0] >= msg["rms"][0]
+    await post(client, "/player/pause")
+    for _ in range(5):
+        msg = await asyncio.wait_for(ws.receive_json(), 2)
+    assert msg["rms"] == [-100.0, -100.0]
+    await ws.close()
+    for _ in range(20):
+        await asyncio.sleep(0.05)
+        if device.levels._task.done():
+            break
+    assert device.levels._task.done()          # nobody listens: polling stops
+
+
+def test_levels_clean():
+    from aroiod.levels import clean
+    assert clean([-3.04, float("nan")], [-200, "x"]) == {"peak": [-3.0, -100.0], "rms": [-100.0, -100.0]}

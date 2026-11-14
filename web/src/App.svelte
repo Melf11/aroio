@@ -1,8 +1,9 @@
 <script>
-  import { WifiOff, LoaderCircle } from '@lucide/svelte';
+  import { WifiOff } from '@lucide/svelte';
   import Nav from './components/Nav.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
   import Toasts from './components/Toasts.svelte';
+  import RebootOverlay from './components/RebootOverlay.svelte';
   import { app } from './lib/state.svelte.js';
   import { route, match } from './lib/router.svelte.js';
   import { t, lang } from './lib/i18n.svelte.js';
@@ -97,13 +98,7 @@
   </div>
 {/if}
 
-{#if app.rebooting}
-  <div class="reboot" role="alertdialog" aria-modal="true" aria-labelledby="rb-t">
-    <LoaderCircle size={40} class="spin" aria-hidden="true" />
-    <h2 id="rb-t">{t('Der Aroio startet neu')}</h2>
-    <p>{t('Das dauert nur ein paar Sekunden. Diese Seite verbindet sich danach von selbst.')}</p>
-  </div>
-{/if}
+{#if app.rebooting || app.showBack}<RebootOverlay />{/if}
 
 <style>
   .skip { position: absolute; left: 12px; top: -60px; z-index: 100; background: var(--brand); color: var(--on-brand); padding: 10px 16px; border-radius: 10px; font-weight: 700; }
@@ -117,7 +112,6 @@
   .mini-wrap { padding: 0 8px 8px; }
   .flow { min-height: 100dvh; padding-top: var(--safe-t); padding-bottom: var(--safe-b); }
   .offline { display: flex; align-items: center; gap: 8px; justify-content: center; padding: 8px 12px; background: var(--warn-soft); color: var(--warn); font-weight: 600; font-size: .9375rem; }
-  .reboot { position: fixed; inset: 0; z-index: 90; background: var(--bg); display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; padding: 24px; }
   :global(.spin) { animation: spin 1s linear infinite; color: var(--brand-ink); }
   @keyframes spin { to { transform: rotate(360deg); } }
 
