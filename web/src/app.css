@@ -1,0 +1,185 @@
+/* Aroio design tokens.
+   Brand colour stays #00AAAA ("ABACUS Petrol", old web UI). It has 2.9:1 on white,
+   so it is used for fills/accents with dark text on top (--on-brand, 7:1) and
+   never as small text on light backgrounds; text uses --brand-ink (#007A7A, 5.2:1). */
+
+:root {
+  color-scheme: light;
+  --brand: #00aaaa;
+  --brand-ink: #007a7a;
+  --on-brand: #062626;
+  --brand-soft: #dff3f3;
+  --brand-soft-ink: #0b4f4f;
+
+  --bg: #f4f7f7;
+  --surface: #ffffff;
+  --surface-2: #eaf0f0;
+  --surface-3: #dfe7e7;
+  --text: #0e1a1a;
+  --text-2: #435659;
+  --border: #d3dede;
+  --border-strong: #6f8587;
+  --focus: #007a7a;
+  --shadow: 0 1px 2px rgb(6 38 38 / 0.06), 0 4px 16px rgb(6 38 38 / 0.06);
+
+  --ok: #1a7343;
+  --ok-soft: #e1f3e8;
+  --warn: #835400;
+  --warn-soft: #fbefd5;
+  --danger: #b42318;
+  --danger-soft: #fde7e5;
+
+  --radius: 14px;
+  --radius-s: 10px;
+  --tap: 44px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --nav-h: 64px;
+  --mini-h: 68px;
+  --side-w: 248px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --brand-ink: #3fcfcf;
+    --brand-soft: #0f3434;
+    --brand-soft-ink: #a6eeee;
+    --bg: #0a1112;
+    --surface: #111a1b;
+    --surface-2: #182425;
+    --surface-3: #213031;
+    --text: #e7efef;
+    --text-2: #a5b7b8;
+    --border: #2a3a3b;
+    --border-strong: #6b8384;
+    --focus: #5fe0e0;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.35);
+    --ok: #6fd39a;
+    --ok-soft: #12301f;
+    --warn: #f3c46b;
+    --warn-soft: #33270d;
+    --danger: #ff8f84;
+    --danger-soft: #3a1714;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --brand-ink: #3fcfcf;
+  --brand-soft: #0f3434;
+  --brand-soft-ink: #a6eeee;
+  --bg: #0a1112;
+  --surface: #111a1b;
+  --surface-2: #182425;
+  --surface-3: #213031;
+  --text: #e7efef;
+  --text-2: #a5b7b8;
+  --border: #2a3a3b;
+  --border-strong: #6b8384;
+  --focus: #5fe0e0;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 6px 20px rgb(0 0 0 / 0.35);
+  --ok: #6fd39a;
+  --ok-soft: #12301f;
+  --warn: #f3c46b;
+  --warn-soft: #33270d;
+  --danger: #ff8f84;
+  --danger-soft: #3a1714;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 1rem/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow-wrap: anywhere;
+}
+img, svg { display: block; max-width: 100%; }
+h1, h2, h3 { line-height: 1.2; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.0625rem; }
+p { margin: 0; }
+a { color: var(--brand-ink); text-underline-offset: 3px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+::selection { background: var(--brand); color: var(--on-brand); }
+
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.muted { color: var(--text-2); }
+.small { font-size: 0.875rem; }
+.mono { font-family: var(--mono); font-size: 0.875em; }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; align-items: center; gap: 12px; }
+.grow { flex: 1; min-width: 0; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap); padding: 10px 18px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+  font-weight: 600; text-decoration: none; line-height: 1.2; text-align: center;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger { border-color: var(--danger); color: var(--danger); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); }
+.btn.block { width: 100%; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.icon-btn {
+  display: inline-grid; place-items: center; width: var(--tap); height: var(--tap);
+  border-radius: 999px; border: 0; background: transparent; color: inherit; flex: none;
+}
+.icon-btn:hover { background: var(--surface-2); }
+
+/* Cards and lists */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.card.flat { box-shadow: none; }
+.list { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.list > li + li { border-top: 1px solid var(--border); }
+.section-title { font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-2); font-weight: 650; margin: 24px 4px 8px; }
+
+/* Forms */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .label { font-weight: 600; }
+.field .hint { font-size: 0.875rem; color: var(--text-2); }
+.input, select.input, textarea.input {
+  min-height: var(--tap); width: 100%; padding: 10px 12px; border-radius: var(--radius-s);
+  border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+}
+.input[aria-invalid="true"] { border-color: var(--danger); border-width: 2px; }
+.error-text { color: var(--danger); font-size: 0.875rem; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 650; background: var(--surface-2); color: var(--text-2); line-height: 1.5; white-space: nowrap; }
+.badge.brand { background: var(--brand-soft); color: var(--brand-soft-ink); }
+.badge.ok { background: var(--ok-soft); color: var(--ok); }
+.badge.warn { background: var(--warn-soft); color: var(--warn); }
+.badge.danger { background: var(--danger-soft); color: var(--danger); }
+
+.notice { display: flex; gap: 12px; padding: 12px 14px; border-radius: var(--radius-s); background: var(--surface-2); align-items: flex-start; }
+.notice.info { background: var(--brand-soft); color: var(--brand-soft-ink); }
+.notice.warn { background: var(--warn-soft); color: var(--warn); }
+.notice.danger { background: var(--danger-soft); color: var(--danger); }
+.notice.ok { background: var(--ok-soft); color: var(--ok); }
+.notice svg { flex: none; margin-top: 2px; }
+
+.page { padding: 16px 16px 32px; max-width: 960px; margin: 0 auto; width: 100%; }
+.page-head { display: flex; align-items: center; gap: 8px; margin: 4px 0 16px; min-height: var(--tap); }
+.page-head h1 { flex: 1; min-width: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

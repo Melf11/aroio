@@ -1,0 +1,120 @@
+import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+const api = (request, path, data, method = 'post') => request[method]('/api/v1' + path, { data });
+
+async function fresh(request, { setup = true } = {}) {
+  await api(request, '/system/factory-reset', { confirm: 'zuruecksetzen' });
+  await api(request, '/sim/lan', { on: true });
+  if (setup) await api(request, '/config', { setup: { completed: true } }, 'patch');
+}
+
+async function axe(page, name) {
+  const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
+  const v = r.violations.map((x) => `${x.id} (${x.impact}): ${x.help}\n    ${x.nodes.slice(0, 3).map((n) => n.target.join(' ')).join('\n    ')}`);
+  expect(v, `${name}: axe violations`).toEqual([]);
+}
+
+const ROUTES = ['/', '/musik', '/musik/b?path=local/albums', '/musik/b?path=local/album/3', '/musik/suche?q=licht', '/warteschlange',
+  '/klang', '/einstellungen', '/einstellungen/allgemein', '/einstellungen/netzwerk', '/einstellungen/dienste',
+  '/einstellungen/dienste/spotify', '/einstellungen/dienste/tidal', '/einstellungen/dienste/qobuz', '/einstellungen/dienste/lyrion',
+  '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet'];
+const EXPERT = ['/einstellungen/ton', '/einstellungen/hardware', '/einstellungen/system', '/klang/import'];
+
+test('alle Seiten ohne Barrierefreiheits-Verstöße (hell und dunkel)', async ({ page, request }, info) => {
+  await fresh(request);
+  await api(request, '/queue', { id: 'local:album:3' });
+  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
+  for (const scheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme: scheme });
+    for (const r of [...ROUTES, ...EXPERT]) {
+      await page.goto(r);
+      await expect(page.locator('main h1').first()).toBeVisible();
+      await page.waitForTimeout(150);
+      await axe(page, `${r} (${scheme})`);
+      if (scheme === 'light' || r === '/') {
+        await page.screenshot({ path: `test-results/shots/${info.project.name}-${scheme}${r.replace(/[/?=&]+/g, '_')}.png`, fullPage: true });
+      }
+    }
+  }
+});
+
+test('kein horizontales Scrollen', async ({ page, request }) => {
+  await fresh(request);
+  await api(request, '/queue', { id: 'local:album:5' });
+  for (const r of ROUTES) {
+    await page.goto(r);
+    await page.waitForTimeout(100);
+    const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(over, r).toBeLessThanOrEqual(0);
+  }
+});
+
+test('Einrichtung beim ersten Start', async ({ page, request }) => {
+  await fresh(request, { setup: false });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Willkommen beim Aroio' })).toBeVisible();
+  await axe(page, 'setup');
+  await page.getByRole('button', { name: 'Los geht’s' }).click();
+  await page.getByLabel('Name', { exact: true }).fill('Küche');
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByText('per Kabel verbunden')).toBeVisible();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await axe(page, 'setup-end');
+  await page.getByRole('button', { name: 'Zum Aroio' }).click();
+  await expect(page.getByRole('heading', { name: 'Küche' })).toBeVisible();
+});
+
+test('Album abspielen, Lautstärke, Warteschlange', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/musik/b?path=local/album/2');
+  await page.getByRole('button', { name: 'Abspielen', exact: true }).click();
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Pause' }).first()).toBeVisible();
+  const slider = page.getByRole('slider', { name: 'Lautstärke' });
+  await slider.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).player.volume).toBe(31);
+  await api(request, '/sim/external_start', { source: 'airplay' });
+  await expect(page.getByText('AirPlay', { exact: false }).first()).toBeVisible();
+});
+
+test('Raumkorrektur Schritt für Schritt', async ({ page, request }) => {
+  test.setTimeout(180000);
+  await fresh(request);
+  await page.goto('/klang/raumkorrektur');
+  await page.getByRole('button', { name: 'Los geht’s' }).click();
+  await expect(page.getByRole('heading', { name: 'Mikrofon anschließen' })).toBeVisible();
+  await axe(page, 'rc-mic');
+  await api(request, '/sim/mic', { on: true });
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('button', { name: 'Mikrofon steht' }).click();
+  await page.getByRole('button', { name: 'Lautstärke prüfen' }).click();
+  await page.getByRole('button', { name: 'Weiter' }).click({ timeout: 15000 });
+  const measured = async () => (await (await api(request, '/state', undefined, 'get')).json()).roomcorr.measured.length;
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole('button', { name: /^Messen$/ }).click();
+    await expect.poll(measured, { timeout: 30000 }).toBe((i + 1) * 2);
+  }
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('radio', { name: 'Warm' }).check();
+  await page.getByRole('button', { name: 'Korrektur berechnen' }).click();
+  await expect(page.getByRole('heading', { name: 'Ergebnis' })).toBeVisible({ timeout: 30000 });
+  await axe(page, 'rc-result');
+  await page.getByLabel('Name für diese Einstellung').fill('Testraum');
+  await page.getByRole('button', { name: 'Speichern und verwenden' }).click();
+  await expect(page.getByRole('heading', { name: /Fertig/ })).toBeVisible();
+});
+
+test('Altgerät übernehmen', async ({ page, request }) => {
+  await fresh(request, { setup: false });
+  await api(request, '/sim/old_device');
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Einstellungen vom alten Aroio übernehmen' })).toBeVisible();
+  await axe(page, 'migration');
+  await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Fast fertig' })).toBeVisible();
+  await page.getByRole('button', { name: 'Fertig' }).click();
+  await expect(page.getByRole('heading', { name: 'Aroio Wohnzimmer' })).toBeVisible();
+});

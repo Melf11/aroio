@@ -1,0 +1,20 @@
+[Unit]
+Description=CamillaDSP audio engine
+DefaultDependencies=no
+After=sound.target local-fs.target
+Before=aroiod.service
+
+[Service]
+User=aroio
+ExecStart=/usr/bin/camilladsp --wait -a 127.0.0.1 -p 1234 -s /run/aroio/camilladsp-state.yml
+RuntimeDirectory=aroio
+RuntimeDirectoryPreserve=yes
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=80
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

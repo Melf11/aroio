@@ -1,0 +1,4 @@
+config BR2_PACKAGE_AROIO_WEB
+	bool "aroio-web"
+	help
+	  The Aroio app (PWA), prebuilt from web/ (make web).

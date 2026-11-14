@@ -1,0 +1,17 @@
+[Unit]
+Description=Aroio control service and app
+After=camilladsp.service data.mount
+Wants=camilladsp.service
+
+[Service]
+User=aroio
+ExecStart=/usr/bin/python3 -m aroiod --data /data/aroio --port 80 --static /usr/share/aroio-web
+WorkingDirectory=/usr/lib/aroiod
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=1
+# marks the boot as good for RAUC once the app answers (phase 1)
+ExecStartPost=-/usr/lib/aroio/mark-good
+
+[Install]
+WantedBy=multi-user.target

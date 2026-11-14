@@ -1,0 +1,6 @@
+[update]
+compatible=aroio-rpi
+version=@VERSION@
+
+[image.rootfs]
+filename=rootfs.squashfs

@@ -1,0 +1,23 @@
+# AroioOS. Written by Buildroot; [pi*] sections select the kernel per board.
+[all]
+arm_64bit=1
+kernel=Image
+disable_splash=1
+boot_delay=0
+dtparam=i2c_arm=on
+dtparam=i2s=on
+dtparam=spi=on
+dtparam=audio=off
+dtoverlay=i2s-mmap
+dtoverlay=hifiberry-dacplus
+dtoverlay=gpio-ir,gpio_pin=25
+dtoverlay=act-led,gpio=22
+dtparam=act_led_trigger=heartbeat
+force_turbo=1
+max_usb_current=1
+# Aroio LT: rotary encoder and pause key (model-specific overlays are added by aroiod)
+# dtoverlay=rotary-encoder,pin_a=23,pin_b=24,relative_axis=1
+# dtoverlay=gpio-key,gpio=27,keycode=164,label="PLAYPAUSE"
+[pi5]
+kernel=Image
+[all]
