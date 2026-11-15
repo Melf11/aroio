@@ -1,0 +1,21 @@
+From: AroioOS
+Subject: [PATCH] src: do not pass -static to every compile and link
+
+"-static" in AM_CFLAGS also reaches the link of bluealsad, which then needs
+static versions of all libraries (dbus-1, asound ...). Systems with shared
+libraries only (Buildroot) cannot link it. libbluealsad is a noinst
+convenience library and static anyway.
+
+---
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -171,8 +171,7 @@
+ 	@MPG123_CFLAGS@ \
+ 	@OPUS_CFLAGS@ \
+ 	@SBC_CFLAGS@ \
+-	@SPANDSP_CFLAGS@ \
+-	-static
++	@SPANDSP_CFLAGS@
+ 
+ libbluealsad_la_LIBADD = \
+ 	shared/libshared.la \

@@ -1,3 +1,15 @@
+diff --git a/package/bluez-alsa/Config.in b/package/bluez-alsa/Config.in
+index d7017264..fca6bb26 100644
+--- a/package/bluez-alsa/Config.in
++++ b/package/bluez-alsa/Config.in
+@@ -10,6 +10,7 @@ config BR2_PACKAGE_BLUEZ_ALSA
+ 	select BR2_PACKAGE_ALSA_LIB
+ 	select BR2_PACKAGE_ALSA_LIB_MIXER
+ 	select BR2_PACKAGE_BLUEZ5_UTILS
++	select BR2_PACKAGE_DBUS # 5.0: links libdbus
+ 	select BR2_PACKAGE_BLUEZ5_UTILS_PLUGINS_AUDIO
+ 	select BR2_PACKAGE_LIBGLIB2
+ 	select BR2_PACKAGE_SBC
 diff --git a/package/bluez-alsa/bluez-alsa.hash b/package/bluez-alsa/bluez-alsa.hash
 index fbcbabea..1d9a90a0 100644
 --- a/package/bluez-alsa/bluez-alsa.hash
@@ -9,10 +21,10 @@ index fbcbabea..1d9a90a0 100644
 +sha256  e1249cbebd24925c977814f62adab71f2ebd771e28e6a4ac58bb1ac97ce3beb5  bluez-alsa-5.0.0.tar.gz
 +sha256  47a67fe6b44d4aff90c837ebce38814bf89fdf5efd6bc6c9c078f960c35f61b8  LICENSE
 diff --git a/package/bluez-alsa/bluez-alsa.mk b/package/bluez-alsa/bluez-alsa.mk
-index 8a5abe3f..338bfd53 100644
+index 8a5abe3f..97bb07c3 100644
 --- a/package/bluez-alsa/bluez-alsa.mk
 +++ b/package/bluez-alsa/bluez-alsa.mk
-@@ -4,7 +4,7 @@
+@@ -4,11 +4,11 @@
  #
  ################################################################################
  
@@ -21,6 +33,11 @@ index 8a5abe3f..338bfd53 100644
  BLUEZ_ALSA_SITE = $(call github,Arkq,bluez-alsa,v$(BLUEZ_ALSA_VERSION))
  BLUEZ_ALSA_LICENSE = MIT
  BLUEZ_ALSA_LICENSE_FILES = LICENSE
+-BLUEZ_ALSA_DEPENDENCIES = alsa-lib bluez5_utils libglib2 sbc host-pkgconf
++BLUEZ_ALSA_DEPENDENCIES = alsa-lib bluez5_utils dbus libglib2 sbc host-pkgconf
+ 
+ # git repo, no configure
+ BLUEZ_ALSA_AUTORECONF = YES
 @@ -16,7 +16,7 @@ BLUEZ_ALSA_AUTORECONF = YES
  BLUEZ_ALSA_CONF_OPTS = \
  	--enable-a2dpconf \
