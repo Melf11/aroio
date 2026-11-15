@@ -45,9 +45,9 @@
     const ch = linked ? 'both' : channel;
     timer = setTimeout(() => onchange?.(ch, copy(bands[channel]), { L: copy(bands.L), R: copy(bands.R) }), 150);
   }
-  function add() {
+  function add(freq = 100, gain = 0) {
     if (list.length >= 20) return;
-    bands[channel].push({ type: 'peaking', freq: 100, gain: 0, q: 1 });
+    bands[channel].push({ type: 'peaking', freq, gain, q: 1 });
     open = bands[channel].length - 1;
     changed();
     announce(t('Filter {n} hinzugefügt', { n: open + 1 }));
@@ -79,10 +79,27 @@
     e.currentTarget.focus();
     e.currentTarget.setPointerCapture(e.pointerId);
     open = i;
-    drag = { i, q: qKey(e), y0: e.clientY, q0: list[i].q };
+    drag = { i, q: qKey(e), x0: e.clientX, y0: e.clientY, q0: list[i].q, moved: false };
+  }
+  // double click / double tap (own detection: works the same with mouse and finger):
+  // on a point removes that filter, on the free chart adds one there
+  const DOUBLE_MS = 400;
+  let lastTap = null;
+  function isDouble(target, e) {
+    const now = performance.now(), hit = lastTap && lastTap.target === target && now - lastTap.t < DOUBLE_MS
+      && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30;
+    lastTap = hit ? null : { target, t: now, x: e.clientX, y: e.clientY };
+    return hit;
+  }
+  function tapBackground(e, h) {
+    if (e.button !== 0 || !isDouble('bg', e)) return;
+    const v = h.valueAt(e);
+    add(roundF(clamp(v.freq, 20, 20000)), r1(clamp(v.db, GMIN, GMAX)));
   }
   function move(e, h) {
     if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 4) return;   // a tap, not a drag
+    drag.moved = true;
     const f = bands[channel][drag.i], v = h.valueAt(e);
     if (qKey(e) !== drag.q) drag = { ...drag, q: qKey(e), y0: e.clientY, q0: f.q };   // modifier pressed mid-drag
     f.freq = roundF(clamp(v.freq, 10, 24000));
@@ -90,10 +107,12 @@
     else if (hasGain(f.type)) f.gain = r1(clamp(v.db, GMIN, GMAX));
     changed();
   }
-  function up() {
+  function up(e) {
     if (!drag) return;
-    announce(summary(bands[channel][drag.i]));
+    const { i, moved } = drag;
     drag = null;
+    if (moved) { lastTap = null; announce(summary(bands[channel][i])); return; }
+    if (e.type === 'pointerup' && isDouble('handle-' + i, e)) remove(i);
   }
   function key(e, i) {
     const f = bands[channel][i];
@@ -127,6 +146,9 @@
   </div>
 
   {#snippet handles(h)}
+    <!-- free chart area: double click / double tap adds a filter there (keyboard: "Filter hinzufügen") -->
+    <rect class="area" x={h.area.x} y={h.area.y} width={h.area.w} height={h.area.h} aria-hidden="true"
+          onpointerup={(e) => tapBackground(e, h)} />
     {#each list as f, i (i)}
       <g class="handle" class:active={open === i} class:dragging={drag?.i === i}
          transform="translate({h.x(clamp(f.freq, 20, fmax)).toFixed(1)} {h.y(hasGain(f.type) ? f.gain : 0).toFixed(1)})"
@@ -142,7 +164,7 @@
   {/snippet}
   <FrequencyChart {freqs} {series} fmin={20} {fmax} ymin={-20} ymax={15} overlay={handles}
     summary={t('Wirkung der Filter {ch}', { ch: linked ? t('beider Kanäle') : channel === 'L' ? t('links') : t('rechts') })} />
-  <p class="muted small" id="peq-drag-hint">{t('Punkte in der Kurve ziehen: links/rechts ändert die Frequenz, hoch/runter den Pegel, mit ⌘ oder Strg die Güte. Mit der Tastatur: Pfeiltasten.')}</p>
+  <p class="muted small" id="peq-drag-hint">{t('Punkte in der Kurve ziehen: links/rechts ändert die Frequenz, hoch/runter den Pegel, mit ⌘ oder Strg die Güte. Doppelklick in die Kurve legt einen Filter an, Doppelklick auf einen Punkt löscht ihn. Mit der Tastatur: Pfeiltasten, Entf löscht.')}</p>
 
   <ol class="bands">
     {#each list as f, i (i)}
@@ -206,6 +228,7 @@
   .param .num .input { width: 6.5em; min-height: 40px; padding: 6px 8px; }
   .param input[type=range] { grid-area: range; width: 100%; height: var(--tap); accent-color: var(--brand-ink); margin: 0; }
   .danger-text { color: var(--danger); align-self: flex-start; }
+  .area { fill: transparent; cursor: crosshair; touch-action: manipulation; }
   .handle { cursor: grab; touch-action: none; outline: none; }
   .handle.dragging { cursor: grabbing; }
   .handle .hit { fill: transparent; }

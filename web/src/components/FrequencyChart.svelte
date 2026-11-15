@@ -56,7 +56,7 @@
       <path d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width || 2.5}
             stroke-dasharray={s.dash || null} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
     {/each}
-    {#if overlay}{@render overlay({ x, y, valueAt, ymin, ymax })}{/if}
+    {#if overlay}{@render overlay({ x, y, valueAt, ymin, ymax, area: { x: PAD.l, y: PAD.t, w: W - PAD.l - PAD.r, h: height - PAD.t - PAD.b } })}{/if}
   </svg>
   <figcaption class="legend">
     {#each series as s}

@@ -181,6 +181,16 @@ test('Eigener Equalizer ohne Messmikrofon', async ({ page, request }) => {
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('Control+ArrowUp');
   await expect.poll(async () => { const f = (await preset()).peq.R[2]; return [f.gain, f.q]; }).toEqual([-0.5, 0.77]);
+  // double click into the free chart adds a filter there, double click on its point removes it
+  const area = page.locator('rect.area');
+  const a = await area.boundingBox();
+  await area.dblclick({ position: { x: a.width * 0.3, y: a.height * 0.15 } });
+  await expect.poll(async () => (await preset()).peq.L.length).toBe(4);
+  const added = (await preset()).peq.L[3];
+  expect(added.type).toBe('peaking');
+  expect(added.gain).toBeGreaterThan(5);
+  await page.getByRole('button', { name: /^Filter 4:/ }).dblclick();
+  await expect.poll(async () => (await preset()).peq.L.length).toBe(3);
 });
 
 test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, request }) => {
