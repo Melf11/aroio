@@ -9,6 +9,7 @@ import json
 import logging
 import re
 import time
+import weakref
 import zipfile
 from io import BytesIO
 from pathlib import Path
@@ -28,6 +29,7 @@ A = "/api/v1"
 DEVICE = web.AppKey("device", object)
 WORLD = web.AppKey("world", object)
 STARTED = web.AppKey("started", float)
+SOCKETS = web.AppKey("sockets", weakref.WeakSet)   # open websockets, closed on shutdown
 
 
 @web.middleware
@@ -100,6 +102,7 @@ async def websocket(request):
     hub = dev(request).hub
     ws = web.WebSocketResponse(heartbeat=20)
     await ws.prepare(request)
+    request.app[SOCKETS].add(ws)
     dev(request).publish_player()
     await ws.send_json({"type": "snapshot", "state": hub.snapshot()})
     q = hub.subscribe()
@@ -130,6 +133,7 @@ async def levels_ws(request):
     lv = dev(request).levels
     ws = web.WebSocketResponse(heartbeat=20)
     await ws.prepare(request)
+    request.app[SOCKETS].add(ws)
     q = lv.subscribe()
 
     async def pump():
@@ -747,6 +751,14 @@ def build_app(device, static_dir=None):
     app[DEVICE] = device
     app[WORLD] = device.world
     app[STARTED] = time.monotonic()
+    app[SOCKETS] = weakref.WeakSet()
+
+    async def close_sockets(app):
+        # otherwise a stop waits for every open app (systemctl restart took ~15-30 s)
+        for ws in list(app[SOCKETS]):
+            await ws.close(code=1001, message=b"restart")
+
+    app.on_shutdown.append(close_sockets)
     app.add_routes(routes)
     if static_dir and Path(static_dir).is_dir():
         static_dir = Path(static_dir)

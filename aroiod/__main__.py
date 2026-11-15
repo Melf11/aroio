@@ -62,7 +62,7 @@ def main():
         device.world.publish_sim()
 
     app.on_startup.append(on_start)
-    web.run_app(app, host=args.host, port=args.port, access_log=logging.getLogger("aiohttp.access") if args.verbose else None,
+    web.run_app(app, host=args.host, port=args.port, shutdown_timeout=3, access_log=logging.getLogger("aiohttp.access") if args.verbose else None,
                 print=lambda *_: logging.info(
         "aroiod läuft auf http://localhost:%s%s", args.port, "  (Simulator: /sim)" if args.sim else ""))
 
