@@ -208,7 +208,6 @@
         <button disabled={!s.wifi} onclick={() => ev('wifi_drop')}>WLAN trennen</button>
         <button class:on={s.internet} onclick={() => ev('internet', { on: !s.internet })}>Internet {s.internet ? 'weg' : 'da'}</button>
         <button class:on={!!s.lyrion_external} onclick={() => ev('lyrion_external', { server: s.lyrion_external ? '' : '192.168.1.10' })}>Lyrion im Netz: {s.lyrion_external || 'keiner'}</button>
-        <button class:on={s.spotify_needs_key} onclick={() => ev('spotify_needs_key', { on: !s.spotify_needs_key })}>Spotify-Konto braucht Soloist-Key</button>
         <button onclick={() => ev('tidal_confirm')}>TIDAL-Code am Handy bestätigen</button>
         <button onclick={() => ev('bt_phone_pairs')}>Handy koppelt per Bluetooth</button>
       </section>

@@ -1,73 +1,134 @@
-# Release: a tag vX.Y.Z (stable) or vX.Y.Z-beta.N / -rc.N (pre-release = beta channel) builds the
-# system and publishes SD card images and the signed RAUC bundle as a GitHub release.
-# Aroios look for new releases here (aroiod/updates.py).
+# Image and release, started by hand: Actions › "Image und Release" › Run workflow.
 #
-# Runner: GitHub-hosted by default (first build several hours). A self-hosted runner keeps the
-# Buildroot output between builds (minutes): set the repository variable AROIO_RUNNER to its
-# label as JSON, e.g. ["self-hosted","aroio"]. It needs Docker.
-# Secret RAUC_KEY: the release signing key (PEM); its certificate is
-# br2-external/board/rpi/rauc/release-cert.pem.
-name: Release
+#   version  empty = test build (images as a workflow artifact, no release)
+#            0.2.0 = stable release, 0.2.0-beta.1 = pre-release (beta channel)
+#   notes    news shown in the Aroio app, separated by ";"
+#
+# The release gets SD card images (aroio, iqaudio, generic), the signed RAUC bundle and
+# SHA256SUMS; Aroios look for new releases here (aroiod/updates.py).
+#
+# GitHub-hosted jobs end after 6 h. A build from scratch (toolchain, kernel, Python …) can
+# take longer: then the job stops the build in time, shrinks the Buildroot output
+# (tools/ci-prune-out.sh), saves it as a cache and starts the next run, which continues
+# where it stopped (same commit). The compiler cache (ccache) makes later builds fast.
+#
+# Runner: GitHub-hosted by default. A self-hosted runner (repository variable AROIO_RUNNER,
+# e.g. ["self-hosted","aroio"], Docker needed) keeps the output between builds.
+# Secret RAUC_KEY: release signing key (PEM); certificate br2-external/board/rpi/rauc/release-cert.pem.
+name: Image und Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
-        description: "Version ohne v (z. B. 0.2.0-beta.1). Leer = Testbuild ohne Release."
+        description: "Version ohne v (z. B. 0.2.0 oder 0.2.0-beta.1). Leer = Testbuild ohne Release"
         required: false
+      notes:
+        description: "Neuerungen für die App, getrennt mit ; (nur bei Release)"
+        required: false
+      sha:
+        description: "intern: Commit (Fortsetzung)"
+        required: false
+      part:
+        description: "intern: Teil der Fortsetzung"
+        required: false
+        default: "1"
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
-  group: release
+  group: image
   cancel-in-progress: false
+
+env:
+  MAX_PARTS: 5
+  BUILD_MINUTES: 300          # then hand over: leaves time to save the state
 
 jobs:
   image:
     runs-on: ${{ fromJSON(vars.AROIO_RUNNER || '"ubuntu-latest"') }}
-    timeout-minutes: 355   # GitHub-hosted maximum is 6 h
+    timeout-minutes: 355
     env:
       SELF_HOSTED: ${{ vars.AROIO_RUNNER != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Version
         id: v
+        env:
+          V: ${{ inputs.version }}
         run: |
-          if [ "${GITHUB_REF_TYPE}" = tag ]; then V="${GITHUB_REF_NAME#v}"; else V="${{ inputs.version }}"; fi
           if [ -n "$V" ] && ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
-            echo "::error::Version '$V' ist kein x.y.z[-beta.n]"; exit 1
+            echo "::error::Version '$V' ist kein x.y.z oder x.y.z-beta.n"; exit 1
           fi
-          echo "version=${V}" >> "$GITHUB_OUTPUT"
-          echo "build=${V:-ci-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
+          if [ -n "$V" ] && git rev-parse -q --verify "refs/tags/v$V" >/dev/null; then
+            echo "::error::Release v$V gibt es schon"; exit 1
+          fi
+          SHA=$(git rev-parse HEAD)
+          PART="${{ inputs.part || '1' }}"
+          echo "part=$PART" >> "$GITHUB_OUTPUT"
+          echo "next=$((PART + 1))" >> "$GITHUB_OUTPUT"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "build=${V:-ci-${SHA::7}}" >> "$GITHUB_OUTPUT"
           case "$V" in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT";; *) echo "prerelease=false" >> "$GITHUB_OUTPUT";; esac
+          echo "Teil $PART von höchstens $MAX_PARTS, Commit ${SHA::7}" >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.SELF_HOSTED != 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      # GitHub-hosted: Buildroot output on the large /mnt disk, downloads cached between builds
+      # GitHub-hosted: Buildroot output on the large /mnt disk
       - name: Build-Verzeichnis
         id: dir
         run: |
           if [ "$SELF_HOSTED" = true ]; then
             echo "volume=aroio-build" >> "$GITHUB_OUTPUT"
           else
-            sudo mkdir -p /mnt/aroio-build/dl && sudo chown -R "$USER" /mnt/aroio-build
+            sudo mkdir -p /mnt/aroio-build/dl /mnt/aroio-build/ccache && sudo chown -R "$USER" /mnt/aroio-build
             echo "volume=/mnt/aroio-build" >> "$GITHUB_OUTPUT"
+            df -h /mnt
           fi
-      - uses: actions/cache@v4
+
+      - name: Downloads aus dem Cache
         if: env.SELF_HOSTED != 'true'
+        uses: actions/cache/restore@v6
         with:
           path: /mnt/aroio-build/dl
-          key: buildroot-dl-${{ hashFiles('br2-external/configs/*', 'br2-external/package/**/*.mk', 'br2-external/package/**/*.hash', 'Makefile') }}
+          key: buildroot-dl-${{ hashFiles('br2-external/configs/*', 'br2-external/package/**/*.mk', 'br2-external/buildroot-patches/*', 'Makefile') }}
           restore-keys: buildroot-dl-
+
+      # a run that had to hand over left its state for this commit
+      - name: Zwischenstand aus dem Cache
+        id: state
+        if: env.SELF_HOSTED != 'true' && inputs.part != '' && inputs.part != '1'
+        uses: actions/cache/restore@v6
+        with:
+          path: /mnt/state.tar.zst
+          key: aroio-state-${{ steps.v.outputs.sha }}-${{ inputs.part }}
+
+      - name: Compiler-Cache
+        if: env.SELF_HOSTED != 'true' && steps.state.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: /mnt/aroio-build/ccache
+          key: aroio-ccache-${{ github.run_id }}
+          restore-keys: aroio-ccache-
+
+      - name: Zwischenstand auspacken
+        if: steps.state.outputs.cache-hit == 'true'
+        run: |
+          sudo tar -C /mnt/aroio-build -I 'zstd -T0' -xf /mnt/state.tar.zst
+          sudo rm -f /mnt/state.tar.zst
+          du -sh /mnt/aroio-build/*
 
       - name: Signierschlüssel
         env:
@@ -78,19 +139,75 @@ jobs:
           printf '%s\n' "$RAUC_KEY" > "$RUNNER_TEMP/rauc-key.pem"
 
       - name: Image bauen
+        id: build
         run: |
-          make docker-image AROIO_VERSION=${{ steps.v.outputs.build }} AROIO_PROFILE=aroio \
-            AROIO_PROFILES="iqaudio generic" AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }} \
-            AROIO_RAUC_KEY="$RUNNER_TEMP/rauc-key.pem" AROIO_SSH_PUBKEY=
-
-      - name: Selbsttest
-        run: make selftest AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }}
+          set +e
+          timeout --foreground "${BUILD_MINUTES}m" make docker-image AROIO_VERSION=${{ steps.v.outputs.build }} \
+            AROIO_PROFILE=aroio AROIO_PROFILES="iqaudio generic" AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }} \
+            AROIO_RAUC_KEY="$RUNNER_TEMP/rauc-key.pem" AROIO_SSH_PUBKEY= AROIO_CONTAINER=aroio-build-run
+          rc=$?
+          if [ "$rc" = 124 ]; then
+            echo "Zeit für diesen Lauf ist um: Build wird übergeben."
+            docker stop -t 60 aroio-build-run >/dev/null 2>&1 || true
+            echo "handover=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          exit $rc
 
       - name: Schlüssel löschen
         if: always()
         run: rm -f "$RUNNER_TEMP/rauc-key.pem"
 
+      # ── not finished: save the state and start the next part ──
+      - name: Zwischenstand verkleinern und packen
+        if: steps.build.outputs.handover == 'true'
+        run: |
+          if [ "${{ steps.v.outputs.part }}" -ge "$MAX_PARTS" ]; then
+            echo "::error::Nach $MAX_PARTS Teilen nicht fertig. Ein eigener Runner (AROIO_RUNNER) hilft."; exit 1
+          fi
+          sudo tools/ci-prune-out.sh /mnt/aroio-build/out
+          sudo tar -C /mnt/aroio-build -I 'zstd -T0 -3' -cf /mnt/state.tar.zst out ccache buildroot
+          sudo chown "$USER" /mnt/state.tar.zst
+          ls -lh /mnt/state.tar.zst
+      - name: Zwischenstand sichern
+        if: steps.build.outputs.handover == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /mnt/state.tar.zst
+          key: aroio-state-${{ steps.v.outputs.sha }}-${{ steps.v.outputs.next }}
+      - name: Nächsten Teil starten
+        if: steps.build.outputs.handover == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.notes }}
+          NEXT: ${{ steps.v.outputs.next }}
+        run: |
+          gh workflow run release.yml --ref "$GITHUB_REF_NAME" \
+            -f version="$VERSION" -f notes="$NOTES" -f sha="${{ steps.v.outputs.sha }}" -f part="$NEXT"
+          echo "Build wird in Teil $NEXT fortgesetzt." >> "$GITHUB_STEP_SUMMARY"
+
+      # ── finished ──
+      - name: Selbsttest
+        if: steps.build.outputs.handover != 'true'
+        run: make selftest AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }}
+
+      - name: Compiler-Cache sichern
+        if: steps.build.outputs.handover != 'true' && env.SELF_HOSTED != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /mnt/aroio-build/ccache
+          key: aroio-ccache-${{ github.run_id }}
+      - name: Downloads sichern
+        if: steps.build.outputs.handover != 'true' && env.SELF_HOSTED != 'true'
+        uses: actions/cache/save@v6
+        continue-on-error: true      # the same key may exist already
+        with:
+          path: /mnt/aroio-build/dl
+          key: buildroot-dl-${{ hashFiles('br2-external/configs/*', 'br2-external/package/**/*.mk', 'br2-external/buildroot-patches/*', 'Makefile') }}
+
       - name: Dateien
+        if: steps.build.outputs.handover != 'true'
         run: |
           cd output
           mv aroio-sdcard.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-aroio.img.xz
@@ -100,18 +217,18 @@ jobs:
           cat SHA256SUMS
 
       - name: Release
-        if: steps.v.outputs.version != ''
+        if: steps.build.outputs.handover != 'true' && steps.v.outputs.version != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
         run: |
           V=${{ steps.v.outputs.version }}
-          git fetch --tags --force >/dev/null 2>&1 || true
           PRE=$([ "${{ steps.v.outputs.prerelease }}" = true ] && echo --prerelease || true)
           {
             echo "## Neu in $V"
             echo
-            # bullet lines from the tag message become the notes in the Aroio app
-            git tag -l --format='%(contents)' "v$V" 2>/dev/null | sed -n '/^[-*] /p'
+            # bullet lines become the notes in the Aroio app (aroiod/updates.py)
+            printf '%s' "$NOTES" | tr ';' '\n' | sed 's/^ *//; s/ *$//' | sed -n '/./s/^/- /p'
             echo
             echo "## Installation"
             echo
@@ -120,12 +237,13 @@ jobs:
             echo
             echo "Privater Neubau ohne Gewähr, siehe README."
           } > notes.md
+          cat notes.md
           gh release create "v$V" output/aroio-*.img.xz output/aroio-*.raucb output/SHA256SUMS \
-            --title "AroioOS $V" --notes-file notes.md $PRE --verify-tag
+            --target "${{ steps.v.outputs.sha }}" --title "AroioOS $V" --notes-file notes.md $PRE
 
       - name: Testbuild aufheben
-        if: steps.v.outputs.version == ''
-        uses: actions/upload-artifact@v4
+        if: steps.build.outputs.handover != 'true' && steps.v.outputs.version == ''
+        uses: actions/upload-artifact@v7
         with:
           name: aroio-${{ steps.v.outputs.build }}
           path: output/aroio-*

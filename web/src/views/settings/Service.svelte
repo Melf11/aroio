@@ -38,21 +38,31 @@
       {#if s.enabled}
         {#if s.status === 'ready'}
           <p class="notice ok big"><CircleCheck size={20} aria-hidden="true" /><span>{t('Bereit. Öffne Spotify auf deinem Handy und wähle „{name}“ als Lautsprecher.', { name: d.name })}</span></p>
-          {#if d.expert_mode}<p class="muted small">{t('Verfahren: {m}', { m: s.method })}{#if s.key_expires}{' · '}{t('Schlüssel gültig bis {d}', { d: s.key_expires })}{/if}</p>{/if}
+          {#if s.connected === false}<p class="notice warn">{t('Der Spotify-Player startet gerade oder läuft nicht. Er versucht es von selbst weiter.')}</p>{/if}
+          {#if d.expert_mode}<p class="muted small">{t('Spotify Soloist {v}', { v: s.version || '' })}{#if s.key_expires}{' · '}{t('aktualisiert sich vor dem {d} von selbst', { d: s.key_expires })}{/if}</p>{/if}
+          <button class="btn ghost" type="button" onclick={logout}>{t('Schlüssel entfernen')}</button>
+        {:else if s.status === 'installing'}
+          <p class="notice big" role="status"><LoaderCircle size={20} class="spin" aria-hidden="true" /><span>{t('Der Spotify-Player wird von Spotify geladen …')}</span></p>
         {:else}
           <div class="stack">
-            <p class="notice warn">{t('Dein Spotify-Konto braucht einen eigenen Schlüssel. Das ist einmalig und dauert etwa 5 Minuten.')}</p>
-            <ol class="howto">
-              <li>{t('Öffne developer.spotify.com und melde dich mit deinem Spotify-Premium-Konto an.')} <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener external">{t('Seite öffnen')}<ExternalLink size={14} aria-hidden="true" /><span class="sr-only"> ({t('öffnet in neuem Fenster')})</span></a></li>
-              <li>{t('Lege eine neue App an und wähle „Soloist“.')}</li>
-              <li>{t('Kopiere den angezeigten Schlüssel und füge ihn hier ein.')}</li>
-            </ol>
-            <form class="stack" onsubmit={(e) => { e.preventDefault(); login({ soloist_key: key }); }}>
-              <div class="field"><label for="skey">{t('Schlüssel')}</label>
-                <input id="skey" class="input mono" bind:value={key} autocomplete="off" spellcheck="false" required aria-invalid={!!err} />
-                {#if err}<span class="error-text" role="alert">{err}</span>{/if}</div>
-              <button class="btn primary" type="submit" disabled={busy}>{t('Speichern')}</button>
-            </form>
+            {#if s.status === 'error'}
+              <p class="notice danger" role="alert">{s.error}</p>
+              <button class="btn" type="button" onclick={logout}>{t('Schlüssel entfernen und neu eingeben')}</button>
+            {:else}
+              <p class="notice">{t('Für Spotify Connect braucht der Aroio deinen eigenen Soloist-Schlüssel von Spotify. Das ist einmalig und dauert etwa 5 Minuten. Nötig ist Spotify Premium.')}</p>
+              <ol class="howto">
+                <li>{t('Öffne developer.spotify.com und melde dich mit deinem Spotify-Premium-Konto an.')} <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener external">{t('Seite öffnen')}<ExternalLink size={14} aria-hidden="true" /><span class="sr-only"> ({t('öffnet in neuem Fenster')})</span></a></li>
+                <li>{t('Lege eine neue App an und wähle „Soloist“.')}</li>
+                <li>{t('Kopiere den angezeigten Schlüssel und füge ihn hier ein.')}</li>
+                <li>{t('Danach lädt der Aroio den Spotify-Player. Wähle ihn einmal in der Spotify-App als Lautsprecher, dann ist er gekoppelt.')}</li>
+              </ol>
+              <form class="stack" onsubmit={(e) => { e.preventDefault(); login({ soloist_key: key }); }}>
+                <div class="field"><label for="skey">{t('Soloist-Schlüssel')}</label>
+                  <input id="skey" class="input mono" bind:value={key} autocomplete="off" spellcheck="false" required aria-invalid={!!err} />
+                  {#if err}<span class="error-text" role="alert">{err}</span>{/if}</div>
+                <button class="btn primary" type="submit" disabled={busy}>{t('Speichern')}</button>
+              </form>
+            {/if}
           </div>
         {/if}
       {/if}

@@ -193,6 +193,22 @@ test('Eigener Equalizer ohne Messmikrofon', async ({ page, request }) => {
   await expect.poll(async () => (await preset()).peq.L.length).toBe(3);
 });
 
+test('Spotify Connect: Soloist-Schlüssel in den Einstellungen', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/dienste/spotify');
+  await expect(page.getByText(/eigenen Soloist-Schlüssel/)).toBeVisible();
+  await page.getByLabel('Soloist-Schlüssel').fill('kurz');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.getByRole('alert')).toContainText('zu kurz');
+  await page.getByLabel('Soloist-Schlüssel').fill('0123456789abcdef0123456789abcdef');
+  await page.getByRole('button', { name: 'Speichern' }).click();
+  await expect(page.getByText(/Bereit\. Öffne Spotify/)).toBeVisible();
+  await page.waitForTimeout(400);       // toast fades in
+  await axe(page, 'spotify-bereit');
+  await page.getByRole('button', { name: 'Schlüssel entfernen' }).click();
+  await expect(page.getByLabel('Soloist-Schlüssel')).toBeVisible();
+});
+
 test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, request }) => {
   test.setTimeout(90000);
   await fresh(request);

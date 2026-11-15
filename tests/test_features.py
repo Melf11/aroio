@@ -340,7 +340,7 @@ def test_real_airplay_controls_need_remote():
     assert w.source_controls("airplay") == {"stop"}
     w.airplay.track.remote = {"daid": "AB", "acre": "1"}
     assert "next" in w.source_controls("airplay")
-    assert w.source_controls("spotify") == {"stop"} and w.source_controls("input") == set()
+    assert w.source_controls("spotify") == set() and w.source_controls("input") == set()   # Soloist not running
 
 
 def test_bluetooth_parsers():
@@ -396,6 +396,58 @@ def test_loopback_format():
     assert loopback_params("format: S16_LE\nrate: 44100 (44100/1)\n") == (44100, "S16_LE")
     assert loopback_params("format: S24_LE\nrate: 96000 (96000/1)\n") == (96000, "S24_4_RJ_LE")
     assert loopback_params("closed\n") is None
+
+
+def test_soloist_helpers(tmp_path, monkeypatch):
+    from aroiod import soloist
+    assert soloist.parse_version("soloist 1.3.10.71 build 1794592912 (20261113) (g19412df6ea) (linux/aarch64)") \
+        == ("1.3.10.71", "20261113")
+    import pytest
+    with pytest.raises(ValueError):
+        soloist.clean_key("kurz")
+    assert soloist.clean_key(" abcdef0123456789\nabcdef ") == "abcdef0123456789abcdef"
+    monkeypatch.setattr(soloist, "ENV", tmp_path / "soloist.env")
+    soloist.write_key("abcdef0123456789")
+    assert (tmp_path / "soloist.env").read_text() == 'SOLOIST_KEY="abcdef0123456789"\n'
+    assert oct((tmp_path / "soloist.env").stat().st_mode & 0o777) == "0o600"
+    item = {"uri": "spotify:track:1", "playback": {"duration_ms": 643000},
+            "decorations": {"identity": {"name": "Blue Train"},
+                            "visual_identity": {"cover": [{"size": "default", "url": "https://i.scdn.co/a"},
+                                                          {"size": "large", "url": "https://i.scdn.co/b"}]}},
+            "creators": [{"entity": {"decorations": {"identity": {"name": "John Coltrane"}}}}],
+            "parent": {"entity": {"decorations": {"identity": {"name": "Blue Train"}}}}}
+    m = soloist.track_meta(item, {"position_ms": 61000, "speed": 0})
+    assert (m["title"], m["artist"], m["album"], m["duration"], m["image"], m["position"]) == \
+        ("Blue Train", "John Coltrane", "Blue Train", 643.0, "https://i.scdn.co/b", 61.0)
+
+
+async def test_soloist_drives_the_player(client, device):
+    """Soloist events start/pause/stop Spotify on the Aroio; buttons go back as commands."""
+    from aroiod.soloist import SoloistClient
+    sent = []
+
+    class FakeWS:
+        closed = False
+
+        async def send_json(self, data):
+            sent.append(data)
+    c = SoloistClient(device)
+    c.ws, c.connected = FakeWS(), True
+    item = {"uri": "spotify:track:1", "playback": {"duration_ms": 200000},
+            "decorations": {"identity": {"name": "So What"}}}
+    await c.handle({"type": "playback_state", "status": "playing", "is_active": True, "item": item,
+                    "position": {"position_ms": 0, "speed": 0}})
+    p = (await state(client))["player"]
+    assert p["source"] == "spotify" and p["state"] == "playing" and p["track"]["title"] == "So What"
+    await c.handle({"type": "playback_changed", "status": "paused"})
+    assert (await state(client))["player"]["state"] == "paused"
+    await c.handle({"type": "playback_changed", "status": "playing"})
+    assert (await state(client))["player"]["state"] == "playing"
+    await c.command("next")
+    await c.command("seek", 30.5)
+    assert sent[-2]["command"] == "skip_next" and sent[-1] == {"type": "command", "command": "seek", "position_ms": 30500}
+    await c.handle({"type": "device_changed", "is_active": False})
+    assert (await state(client))["player"]["state"] == "stopped"
 
 
 async def test_spotify_events_keep_meta_and_volume(client, device):

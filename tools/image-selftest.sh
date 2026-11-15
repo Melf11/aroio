@@ -8,7 +8,7 @@ R=/tmp/aroio-root
 rm -rf "$R"
 /build/out/host/bin/unsquashfs -q -d "$R" /build/out/images/rootfs.squashfs >/dev/null
 fail=0
-for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/upmpdcli usr/bin/bluealsa \
+for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/upmpdcli usr/bin/bluealsad usr/bin/bluealsactl \
          usr/bin/iwctl usr/bin/rauc usr/bin/aroio-event usr/lib/aroiod/aroiod/real.py usr/share/aroio-web/index.html \
          etc/rauc/system.conf etc/rauc/keyring.pem etc/systemd/system/multi-user.target.wants/aroiod.service \
          etc/systemd/system/multi-user.target.wants/camilladsp.service \
@@ -22,7 +22,9 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          etc/systemd/system/multi-user.target.wants/bluealsa.service \
          etc/systemd/system/multi-user.target.wants/bluealsa-aplay.service \
          etc/systemd/system/multi-user.target.wants/aroio-bt-agent.service \
-         usr/bin/librespot etc/systemd/system/multi-user.target.wants/aroio-spotify.service usr/lib/aroio/spotify-event \
+         usr/bin/pulseaudio usr/lib/systemd/system/aroio-pulse.service usr/lib/systemd/system/aroio-soloist.service \
+         etc/systemd/system/multi-user.target.wants/aroio-soloist.service etc/aroio/pulse.pa usr/lib/libatomic.so.1 \
+         usr/lib/aroiod/aroiod/soloist.py usr/lib/systemd/system/aroio-soloist-update.timer \
          etc/systemd/system/multi-user.target.wants/squeezelite.service etc/systemd/system/multi-user.target.wants/upmpdcli.service \
          etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/lib/aroio/infoscreen \
          etc/systemd/system/data.mount.wants/aroio-grow-data.service usr/sbin/sfdisk usr/bin/partx usr/lib/systemd/systemd-growfs \
@@ -46,8 +48,8 @@ grep -q "LABEL=data.*x-systemd.growfs" "$R/etc/fstab" || { echo "/data wächst n
 SQ=$(stat -c %s /build/out/images/rootfs.squashfs)
 [ "$SQ" -lt $((240 * 1024 * 1024)) ] || { echo "rootfs zu groß für die 256-MB-Slots: $SQ"; fail=1; }
 echo "rootfs.squashfs: $((SQ / 1048576)) MB, Module: $(du -sm "$R/usr/lib/modules" | cut -f1) MB"
-for u in squeezelite aroio-spotify upmpdcli shairport-sync bluealsa-aplay; do
-    grep -rq "Loopback,0,0" "$R/usr/lib/systemd/system/$u.service" "$R/usr/lib/systemd/system/$u.service.d" "$R/etc/shairport-sync.conf" "$R/etc/mpd.conf" 2>/dev/null \
+for u in squeezelite upmpdcli shairport-sync bluealsa-aplay aroio-pulse; do
+    grep -rq "Loopback,0,0" "$R/usr/lib/systemd/system/$u.service" "$R/usr/lib/systemd/system/$u.service.d" "$R/etc/shairport-sync.conf" "$R/etc/mpd.conf" "$R/etc/aroio/pulse.pa" 2>/dev/null \
         || { echo "$u schreibt nicht in die Loopback"; fail=1; }
 done
 grep -q -- "--volume=none" "$R/usr/lib/systemd/system/bluealsa-aplay.service.d/aroio.conf" || { echo "bluealsa-aplay ohne --volume=none (bricht ohne Mixer ab)"; fail=1; }
@@ -58,8 +60,9 @@ if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then
 fi
 grep -q "rauc.slot=@SLOT@" "$R/usr/share/aroio/boot/cmdline.txt.in" || { echo "cmdline ohne Slot-Kennung"; fail=1; }
 [ -z "$(ls -A "$R/boot" 2>/dev/null)" ] || { echo "Kernel doppelt in /boot"; fail=1; }
+[ ! -e "$R/usr/bin/librespot" ] || { echo "librespot noch im Image"; fail=1; }
 grep -q "BindPaths=/data/timesync" "$R/usr/lib/systemd/system/systemd-timesyncd.service.d/aroio.conf" 2>/dev/null || { echo "Uhrzeit wird nicht gespeichert"; fail=1; }
-grep -q "org.gnome.ShairportSync" "$R/usr/share/dbus-1/system.d/shairport-sync-dbus.conf" 2>/dev/null || { echo "AirPlay ohne D-Bus-Fernsteuerung"; fail=1; }
+grep -q "org.gnome.ShairportSync" "$R/etc/dbus-1/system.d/shairport-sync-dbus.conf" 2>/dev/null || { echo "AirPlay ohne D-Bus-Fernsteuerung"; fail=1; }
 grep -aq "5\.6\.[0-9]" "$R/usr/bin/shairport-sync" || { echo "shairport-sync ist nicht 5.6"; fail=1; }
 # updates from GitHub need TLS in Python, and every image must trust the release key
 chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }

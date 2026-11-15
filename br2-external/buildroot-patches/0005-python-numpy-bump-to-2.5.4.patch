@@ -1,0 +1,29 @@
+diff --git a/package/python-numpy/python-numpy.hash b/package/python-numpy/python-numpy.hash
+index 6dca3729..79922ae3 100644
+--- a/package/python-numpy/python-numpy.hash
++++ b/package/python-numpy/python-numpy.hash
+@@ -1,6 +1,6 @@
+ # md5, sha256 from https://pypi.org/pypi/numpy/json
+-md5  828b6c6df0b6f89b5cf799314d4ee2b6  numpy-2.4.0.tar.gz
+-sha256  6e504f7b16118198f138ef31ba24d985b124c2c469fe8467007cf30fd992f934  numpy-2.4.0.tar.gz
++md5  c7537c082af848103bb3ae9945b5e65e  numpy-2.5.4.tar.gz
++sha256  9a94cf751c9ad8ebaa835bcd3d40dacf8534ad086b88c38029b65123c7999d2a  numpy-2.5.4.tar.gz
+ # License files, locally calculated
+ sha256  1be1df33863f97a7bc1c4d67980bd6c69c9a6fef0a5ee76e6ad6cb91e56e8491  LICENSE.txt
+ sha256  743b0f4a0087fe3607167113fffab6f2ca069c8da321763697ab5d0d8411634a  numpy/_build_utils/tempita/LICENSE.txt
+diff --git a/package/python-numpy/python-numpy.mk b/package/python-numpy/python-numpy.mk
+index 6b052569..a55255a2 100644
+--- a/package/python-numpy/python-numpy.mk
++++ b/package/python-numpy/python-numpy.mk
+@@ -4,9 +4,9 @@
+ #
+ ################################################################################
+ 
+-PYTHON_NUMPY_VERSION = 2.4.0
++PYTHON_NUMPY_VERSION = 2.5.4
+ PYTHON_NUMPY_SOURCE = numpy-$(PYTHON_NUMPY_VERSION).tar.gz
+-PYTHON_NUMPY_SITE = https://files.pythonhosted.org/packages/a4/7a/6a3d14e205d292b738db449d0de649b373a59edb0d0b4493821d0a3e8718
++PYTHON_NUMPY_SITE = https://files.pythonhosted.org/packages/95/b0/c7453d0b6e2073c3264468b106ee1563750cecc910965e67357e3698c83e
+ PYTHON_NUMPY_LICENSE = BSD-3-Clause, MIT, Zlib
+ PYTHON_NUMPY_LICENSE_FILES = \
+ 	LICENSE.txt \

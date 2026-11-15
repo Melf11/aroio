@@ -27,7 +27,7 @@ log = logging.getLogger("aroiod.real")
 
 CAMILLA_URL = "ws://127.0.0.1:1234"
 LOOPBACK_PLAY = "plughw:Loopback,0,0"  # players and aroiod's own signals write here (plug: format/rate of CamillaDSP)
-SOURCE_UNITS = {"lms": "squeezelite.service", "spotify": "aroio-spotify.service",
+SOURCE_UNITS = {"lms": "squeezelite.service", "spotify": "aroio-soloist.service",
                 "airplay": "shairport-sync.service", "upnp": "upmpdcli.service",
                 "bluetooth": "bluealsa-aplay.service", "roon": "roonbridge.service",
                 "netjack": "aroio-netjack.service"}
@@ -452,6 +452,9 @@ class RealWorld:
         from .bt_watch import BluetoothWatch
         self.bt_watch = BluetoothWatch(self.device)
         self.bt_watch.start()
+        from .soloist import SoloistClient
+        self.soloist = SoloistClient(self.device)
+        self.soloist.start()
         self._spawn(self._bluetooth_start())
 
     async def _bluetooth_start(self):
@@ -528,7 +531,7 @@ class RealWorld:
                 await asyncio.sleep(0.5)
             await _run("systemctl", "restart", "shairport-sync.service")   # ends the AirPlay session
         elif sid == "spotify":
-            await _run("systemctl", "restart", "aroio-spotify.service")
+            await self.soloist.command("pause")       # PulseAudio lets go of the loopback after 1 s
         elif sid == "upnp":
             await _mpd("pause 1")
         elif sid == "lms":
@@ -539,14 +542,17 @@ class RealWorld:
 
     def source_controls(self, sid):
         """What works on the device: AirPlay with Shairport Sync's remote control (5.6, D-Bus)
-        or the sender's DACP, otherwise only ending the session; Spotify Connect has no
-        remote interface in librespot (ending only), Bluetooth AVRCP and UPnP (mpd) can do all."""
+        or the sender's DACP, otherwise only ending the session; Spotify (Soloist, while
+        connected), Bluetooth AVRCP and UPnP (mpd) can do all."""
         if sid == "airplay":
             ap = getattr(self, "airplay", None)
             return {"play", "pause", "next", "previous"} if ap and ap.can_control() else {"stop"}
         if sid in ("bluetooth", "upnp"):
             return {"play", "pause", "next", "previous"}
-        if sid in ("spotify", "netjack"):
+        if sid == "spotify":
+            client = getattr(self, "soloist", None)
+            return {"play", "pause", "next", "previous", "seek"} if client and client.connected else set()
+        if sid == "netjack":
             return {"stop"}
         return set()
 
@@ -554,13 +560,16 @@ class RealWorld:
         log.info("resume %s", sid)
         self._spawn(self._source_command(sid, "play"))
 
-    def source_command(self, sid, cmd):
+    def source_command(self, sid, cmd, value=None):
         log.info("%s: %s", sid, cmd)
-        self._spawn(self._source_command(sid, cmd))
+        self._spawn(self._source_command(sid, cmd, value))
 
-    async def _source_command(self, sid, cmd):
-        """play / next / previous on the sender (AirPlay: DACP, Bluetooth: AVRCP, UPnP: mpd)."""
-        if sid == "airplay":
+    async def _source_command(self, sid, cmd, value=None):
+        """play / next / previous (/ seek) on the sender (AirPlay: D-Bus/DACP, Bluetooth:
+        AVRCP, UPnP: mpd, Spotify: Soloist)."""
+        if sid == "spotify":
+            ok = await self.soloist.command(cmd, value)
+        elif sid == "airplay":
             ok = await self.airplay.command({"play": "play", "next": "nextitem", "previous": "previtem"}[cmd])
         elif sid == "bluetooth":
             ok = await self.bt_watch.command(cmd)
@@ -609,7 +618,7 @@ class RealWorld:
             env.write_text(text)
         self._spawn(_output_ok("bluetoothctl", "system-alias", name))
         if changed:
-            self._spawn(_output_ok("systemctl", "try-restart", "shairport-sync.service", "aroio-spotify.service", "upmpdcli.service"))
+            self._spawn(_output_ok("systemctl", "try-restart", "shairport-sync.service", "aroio-soloist.service", "upmpdcli.service"))
 
     def test_noise(self, channel):
         task = getattr(self, "_noise", None)
@@ -649,7 +658,7 @@ class RealWorld:
             return LICENSES
 
     UNITS = {"system": [], "audio": ["camilladsp", "aroiod"], "lyrion": ["squeezelite"], "airplay": ["shairport-sync", "nqptp"],
-             "spotify": ["aroio-spotify"], "bluetooth": ["bluetooth", "bluealsa", "bluealsa-aplay", "aroio-bt-agent"],
+             "spotify": ["aroio-soloist", "aroio-pulse", "aroio-soloist-update"], "bluetooth": ["bluetooth", "bluealsa", "bluealsa-aplay", "aroio-bt-agent"],
              "network": ["iwd", "systemd-networkd", "aroio-hotspot", "aroio-portal-dns"]}
 
     def logs(self, unit):
@@ -699,14 +708,53 @@ class RealWorld:
 
     # ── services ──
     def spotify_status(self, secrets):
-        method = "soloist" if secrets.has("spotify.soloist_key") else "librespot"
-        return {"status": "ready", "method": method, "device_name": self.device.config.get("device.name")}
+        """Spotify Connect = Soloist: needs the user's key, then the player is downloaded."""
+        from . import soloist
+        base = {"method": "soloist", "device_name": self.device.config.get("device.name")}
+        if not secrets.has("spotify.soloist_key"):
+            return dict(base, status="needs_key")
+        inf = soloist.info()
+        if getattr(self, "_soloist_job", None) and not self._soloist_job.done():
+            return dict(base, status="installing")
+        if not inf.get("installed"):
+            return dict(base, status="error", error=getattr(self, "_soloist_error", None)
+                        or "Der Spotify-Player ist noch nicht geladen.")
+        client = getattr(self, "soloist", None)
+        return dict(base, status="ready", version=inf.get("version"), key_expires=inf.get("expires"),
+                    connected=bool(client and client.connected), logged_in=bool(client and client.logged_in))
+
+    def _soloist_install(self):
+        """Download Soloist (in a thread: network, tar, --version) and start it."""
+        from . import soloist
+
+        async def job():
+            msg = await asyncio.get_running_loop().run_in_executor(None, soloist.update, True)
+            log.info("Soloist: %s", msg)
+            self._soloist_error = None if soloist.BIN.is_file() else msg
+            await _output_ok("systemctl", "restart", soloist.UNIT)
+            self.device.publish_services()
+        self._soloist_error = None
+        self._soloist_job = asyncio.ensure_future(job())
+        self.device.publish_services()
 
     def pending_login(self, provider):
         return None
 
     def service_login(self, provider, data, secrets):
+        if provider == "spotify":
+            from . import soloist
+            key = soloist.clean_key(data.get("soloist_key"))
+            soloist.write_key(key)
+            secrets.set("spotify.soloist_key", key)
+            self._soloist_install()
+            return {"ok": True}
         raise ValueError("Die Anmeldung wird mit der Lyrion-Anbindung umgesetzt (Phase 4).")
+
+    def service_logout(self, provider):
+        if provider == "spotify":
+            from . import soloist
+            soloist.remove_key()
+            self._spawn(_output_ok("systemctl", "stop", soloist.UNIT))
 
     def lyrion_status(self, cfg):
         if not cfg["sources"]["lms"]["enabled"]:

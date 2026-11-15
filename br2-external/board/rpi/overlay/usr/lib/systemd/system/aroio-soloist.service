@@ -1,0 +1,30 @@
+[Unit]
+Description=Spotify Connect (Spotify Soloist)
+Documentation=https://developer.spotify.com/documentation/soloist
+# Soloist is not part of the image: aroiod downloads it with the user's key
+# (Einstellungen › Dienste › Spotify), aroiod.soloist keeps it up to date.
+ConditionPathExists=/data/spotify/bin/soloist
+ConditionPathExists=/data/aroio/soloist.env
+Requires=aroio-pulse.service
+After=aroio-pulse.service network-online.target
+Wants=network-online.target
+# builds expire 90 days after they were made (exit code 10): fetch a new one
+OnFailure=aroio-soloist-update.service
+StartLimitIntervalSec=0
+
+[Service]
+Environment=AROIO_NAME=Aroio
+EnvironmentFile=-/data/aroio/names.env
+EnvironmentFile=/data/aroio/soloist.env
+Environment=PULSE_SERVER=unix:/run/pulse/native
+CacheDirectory=soloist
+# -i 100: Spotify at full level, the Aroio's volume is the master
+ExecStart=/data/spotify/bin/soloist -n "${AROIO_NAME}" -k "${SOLOIST_KEY}" -D /data/spotify/soloist \
+    -C /var/cache/soloist -z 100 -i 100 -w 127.0.0.1:9090
+Nice=-10
+Restart=always
+RestartSec=5
+RestartPreventExitStatus=10
+
+[Install]
+WantedBy=multi-user.target

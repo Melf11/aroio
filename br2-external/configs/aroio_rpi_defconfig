@@ -2,10 +2,16 @@
 BR2_aarch64=y
 BR2_cortex_a53=y
 BR2_CCACHE=y
+# compiler cache in the build volume (default is inside the container and lost after every build)
+BR2_CCACHE_DIR="/build/ccache"
+BR2_CCACHE_INITIAL_SETUP="--max-size=4G"
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_AROIO_PATH)/patches"
 BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_TOOLCHAIN_BUILDROOT_FORTRAN=y
+# newest compiler and binutils Buildroot offers
+BR2_GCC_VERSION_16_X=y
+BR2_BINUTILS_VERSION_2_46_X=y
 
 # system
 BR2_INIT_SYSTEMD=y
@@ -69,8 +75,10 @@ BR2_PACKAGE_CAMILLADSP=y
 BR2_PACKAGE_SQUEEZELITE=y
 BR2_PACKAGE_SQUEEZELITE_FFMPEG=y
 BR2_PACKAGE_SQUEEZELITE_DSD=y
-# Shairport Sync 5.6 + NQPTP 1.2.9 from br2-external (remote control of AirPlay 2 senders)
-BR2_PACKAGE_AROIO_SHAIRPORT=y
+# Shairport Sync 5.6 with its D-Bus interface: remote control of AirPlay 2 senders
+BR2_PACKAGE_SHAIRPORT_SYNC=y
+BR2_PACKAGE_SHAIRPORT_SYNC_AIRPLAY2=y
+BR2_PACKAGE_SHAIRPORT_SYNC_DBUS=y
 BR2_PACKAGE_MPD=y
 BR2_PACKAGE_UPMPDCLI=y
 BR2_PACKAGE_BLUEZ5_UTILS=y
@@ -104,7 +112,9 @@ BR2_PACKAGE_LIBSAMPLERATE=y
 BR2_PACKAGE_PYTHON3_SSL=y
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_PYTHON_NUMPY=y
-BR2_PACKAGE_LIBRESPOT=y
+# Spotify Connect: Spotify Soloist (downloaded on the device with the user's key) plays
+# through a minimal PulseAudio into the loopback (aroio-pulse.service)
+BR2_PACKAGE_PULSEAUDIO=y
 BR2_PACKAGE_UTIL_LINUX_BINARIES=y
 BR2_PACKAGE_UTIL_LINUX_PARTX=y
 BR2_PACKAGE_LIBV4L=y

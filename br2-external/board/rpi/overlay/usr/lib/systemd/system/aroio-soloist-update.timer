@@ -1,0 +1,10 @@
+[Unit]
+Description=Look for a newer Spotify Soloist every 6 hours
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=6h
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

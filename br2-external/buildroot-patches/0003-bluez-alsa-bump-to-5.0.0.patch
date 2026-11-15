@@ -1,0 +1,32 @@
+diff --git a/package/bluez-alsa/bluez-alsa.hash b/package/bluez-alsa/bluez-alsa.hash
+index fbcbabea..1d9a90a0 100644
+--- a/package/bluez-alsa/bluez-alsa.hash
++++ b/package/bluez-alsa/bluez-alsa.hash
+@@ -1,3 +1,3 @@
+ # Locally calculated:
+-sha256  933fe898dfac21fdfeb5f4ffa685c2aa2db9c064d639170ac2652f156e956a2a  bluez-alsa-4.3.1.tar.gz
+-sha256  956564dcf06ba65cd7a5eb6cdfd695e2ab0f09ea9684e4eaf079f5d533bd206d  LICENSE
++sha256  e1249cbebd24925c977814f62adab71f2ebd771e28e6a4ac58bb1ac97ce3beb5  bluez-alsa-5.0.0.tar.gz
++sha256  47a67fe6b44d4aff90c837ebce38814bf89fdf5efd6bc6c9c078f960c35f61b8  LICENSE
+diff --git a/package/bluez-alsa/bluez-alsa.mk b/package/bluez-alsa/bluez-alsa.mk
+index 8a5abe3f..338bfd53 100644
+--- a/package/bluez-alsa/bluez-alsa.mk
++++ b/package/bluez-alsa/bluez-alsa.mk
+@@ -4,7 +4,7 @@
+ #
+ ################################################################################
+ 
+-BLUEZ_ALSA_VERSION = 4.3.1
++BLUEZ_ALSA_VERSION = 5.0.0
+ BLUEZ_ALSA_SITE = $(call github,Arkq,bluez-alsa,v$(BLUEZ_ALSA_VERSION))
+ BLUEZ_ALSA_LICENSE = MIT
+ BLUEZ_ALSA_LICENSE_FILES = LICENSE
+@@ -16,7 +16,7 @@ BLUEZ_ALSA_AUTORECONF = YES
+ BLUEZ_ALSA_CONF_OPTS = \
+ 	--enable-a2dpconf \
+ 	--enable-aplay \
+-	--enable-cli \
++	--enable-ctl \
+ 	--disable-debug-time \
+ 	--with-alsaplugindir=/usr/lib/alsa-lib \
+ 	--with-alsaconfdir=/etc/alsa/conf.d

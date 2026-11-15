@@ -1,0 +1,8 @@
+# PulseAudio on the Aroio exists only for Spotify Soloist (it plays through the PulseAudio
+# API): one sink into the ALSA loopback like every other player, nothing else.
+# After 1 s of silence the sink lets go of the loopback, so the next source can open it
+# at its own rate (CamillaDSP follows the rate of whoever opens it).
+load-module module-alsa-sink device=plughw:Loopback,0,0 sink_name=aroio rate=44100 format=s32le
+load-module module-native-protocol-unix auth-anonymous=1 socket=/run/pulse/native
+load-module module-suspend-on-idle timeout=1
+set-default-sink aroio

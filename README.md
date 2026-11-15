@@ -13,7 +13,7 @@ Raspberry Pi 3B/3B+, 4 und 5, alle Aroio-Modelle (SU, EX, LT) und AroioOS auf ei
 
 - **Ton:** CamillaDSP statt BruteFIR/JACK, Abtastrate folgt der Musik, bitgenau ohne Bearbeitung
 - **Raumkorrektur:** Assistent Schritt für Schritt mit Messmikrofon (UMIK-1), dazu FIR-Import für Acourate/Audiovero
-- **Quellen:** Lyrion/Squeezelite, Spotify Connect, AirPlay 2, UPnP/OpenHome, Bluetooth (LDAC/aptX HD), Roon, Eingang, NetJack
+- **Quellen:** Lyrion/Squeezelite, Spotify Connect (Spotify Soloist, eigener Schlüssel nötig), AirPlay 2, UPnP/OpenHome, Bluetooth (LDAC/aptX HD), Roon, Eingang, NetJack
 - **Musik:** eigene Player- und Bibliotheksansicht über Lyrion, TIDAL und Qobuz direkt in der App
 - **App:** PWA (iOS und Android „Zum Home-Bildschirm“), responsiv ab 375 px, barrierefrei (WCAG 2.2 AA), Expertenmodus
 - **System:** Buildroot, schreibgeschützt, A/B-Updates (inklusive Kernel) von GitHub mit automatischem Rückfall, Übernahme alter Aroios mit Assistent
@@ -64,13 +64,12 @@ installiert. Neu beschreiben muss man die SD-Karte nur, wenn sich die Partitioni
 
 ## Releases und Updates
 
-- **Version veröffentlichen:** Tag setzen und pushen. Aufzählungspunkte in der Tag-Nachricht erscheinen als
-  Neuerungen in der App.
-  ```bash
-  git tag -a v0.2.0 -m "- NetJack ist zurück" -m "- Updates direkt von GitHub"
-  git push origin v0.2.0
-  ```
-  `vX.Y.Z` ist ein stabiles Release, `vX.Y.Z-beta.N` ein Pre-Release (Beta-Kanal in der App).
+- **Version veröffentlichen:** von Hand auf GitHub unter *Actions › Image und Release › Run workflow*.
+  Eingaben: Version (`0.2.0` = stabil, `0.2.0-beta.1` = Pre-Release für den Beta-Kanal, leer = Testbuild ohne
+  Release) und die Neuerungen, getrennt mit `;` (erscheinen in der App). Der Tag `vX.Y.Z` entsteht mit dem Release.
+- **Lange Builds:** GitHubs Runner beenden einen Job nach 6 Stunden. Ein Build von Grund auf kann länger dauern:
+  Dann sichert der Job seinen Zwischenstand im Cache und startet selbst den nächsten Teil, der dort weitermacht
+  (höchstens 5 Teile). Danach macht der Compiler-Cache die Builds deutlich schneller.
 - **GitHub Actions** (`.github/workflows/release.yml`) baut das System, prüft es (`tools/image-selftest.sh`) und
   veröffentlicht als Release: SD-Images je DAC-Profil (`sdcard-aroio`, `sdcard-iqaudio`, `sdcard-generic`), das
   signierte Update-Paket `aroio-X.Y.Z.raucb` und `SHA256SUMS`. Tests laufen bei jedem Push (`ci.yml`).
@@ -108,6 +107,6 @@ make e2e         # Abläufe und axe-Prüfung aller Seiten, mobil und Desktop, he
 ## Lizenz
 
 Für den eigenen Code dieses Neubaus ist noch keine Lizenzdatei festgelegt. Die Komponenten im Image
-(Linux, CamillaDSP, shairport-sync, librespot, JACK, …) behalten ihre eigenen Open-Source-Lizenzen; die Liste
+(Linux, CamillaDSP, shairport-sync, JACK, …) behalten ihre eigenen Open-Source-Lizenzen; die Liste
 steht in der App unter Einstellungen › Lizenzen. Die Werksfilter (BBC-Dip, Echo) stammen aus AroioOS 5.1 von
 ABACUS electronics.

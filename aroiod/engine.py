@@ -416,7 +416,7 @@ class Device:
     def source_stopped(self, sid):
         if self.source == sid:
             self._freeze()
-            self.state = "stopped" if sid in ("bluetooth", "input", "airplay", "netjack") else "paused"
+            self.state = "stopped" if sid in ("bluetooth", "input", "airplay", "netjack", "spotify") else "paused"
             self.publish_player()
             self.publish_sources()
 
@@ -574,6 +574,10 @@ class Device:
             self.world.source_command(self.source, "previous")
 
     def seek(self, seconds):
+        if self.source not in (None, "lms"):
+            if "seek" not in self.controls():
+                return
+            self.world.source_command(self.source, "seek", float(seconds))
         dur = (self.meta or {}).get("duration") or 0
         self.pos_base = max(0.0, min(float(seconds), max(0.0, dur - 0.5)))
         if self.state == "playing":
@@ -805,6 +809,8 @@ class Device:
 
     def service_logout(self, provider):
         self.secrets.delete_prefix(provider + ".")
+        if hasattr(self.world, "service_logout"):
+            self.world.service_logout(provider)
         self.publish_services()
 
     # ── system ───────────────────────────────────────────────────────────────

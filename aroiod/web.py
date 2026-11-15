@@ -716,7 +716,7 @@ async def sim_fir(request):
 
 @routes.post(A + "/internal/source")
 async def internal_source(request):
-    """Events from player hooks on the device (shairport-sync, librespot, squeezelite ...):
+    """Events from player hooks on the device (shairport-sync, squeezelite ...):
     {"source": "airplay", "event": "start"|"stop"|"meta", "meta": {...}, "rate": 44100}.
     Only from the device itself."""
     if request.remote not in ("127.0.0.1", "::1"):

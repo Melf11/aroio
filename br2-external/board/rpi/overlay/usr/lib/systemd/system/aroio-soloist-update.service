@@ -1,0 +1,9 @@
+[Unit]
+Description=Fetch the newest Spotify Soloist (only when set up and idle)
+ConditionPathExists=/data/aroio/soloist.env
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/aroio/aroio-python -m aroiod.soloist update

@@ -58,7 +58,6 @@ LICENSES = [
     {"name": "Squeezelite", "license": "GPL-3.0+", "url": "https://github.com/ralph-irving/squeezelite"},
     {"name": "Shairport Sync", "license": "MIT", "url": "https://github.com/mikebrady/shairport-sync"},
     {"name": "NQPTP", "license": "GPL-2.0", "url": "https://github.com/mikebrady/nqptp"},
-    {"name": "librespot", "license": "MIT", "url": "https://github.com/librespot-org/librespot"},
     {"name": "upmpdcli", "license": "LGPL-2.1+", "url": "https://www.lesbonscomptes.com/upmpdcli/"},
     {"name": "MPD", "license": "GPL-2.0+", "url": "https://www.musicpd.org"},
     {"name": "BlueZ", "license": "GPL-2.0+", "url": "https://www.bluez.org"},
@@ -110,7 +109,6 @@ class SimWorld:
         self.lan = True
         self.wifi_ssid = None
         self.lyrion_external = "192.168.1.10"
-        self.spotify_needs_key = False
         self.logins = {}
         self.bt_devices = [{"address": "A4:C3:F0:11:22:33", "name": "Galaxy S24", "connected": False, "trusted": True}]
         self.bt_pair_until = 0
@@ -178,7 +176,7 @@ class SimWorld:
             "audio": [f"{now} aroio camilladsp[290]: Capture started, rate {self.device.rate}"],
             "lyrion": [f"{now} aroio squeezelite[401]: connected to {self.lyrion_external or 'local'}"],
             "airplay": [f"{now} aroio shairport-sync[288]: AirPlay 2 ready as {self.device.config.get('device.name')}"],
-            "spotify": [f"{now} aroio librespot[300]: Zeroconf ready"],
+            "spotify": [f"{now} aroio soloist[300]: Spotify Connect ready"],
             "bluetooth": [f"{now} aroio bluetoothd[213]: Bluetooth daemon 5.79"],
             "network": [f"{now} aroio iwd[205]: Wireless daemon version 3.10"],
             "kernel": [f"{now} aroio kernel: snd-soc-aroio: registered"],
@@ -214,7 +212,7 @@ class SimWorld:
             "model": self.model, "board": self.board, "mic": self.mic_mode != "none", "mic_mode": self.mic_mode,
             "host_mic": self.host_mic, "internet": self.internet,
             "lan": self.lan, "wifi": self.wifi_ssid, "lyrion_external": self.lyrion_external,
-            "spotify_needs_key": self.spotify_needs_key, "noise_next": self.noise_next, "usb_dac": self.usb_dac,
+            "noise_next": self.noise_next, "usb_dac": self.usb_dac,
             "hotspot": getattr(self, "hotspot_ssid", None),
             "leds": self.leds, "display": lines, "booting": self.booting, "events": self.events,
             "camilla": {"loads": self.camilla_loads, "pipeline": [s.get("names") or s.get("name") for s in (self.camilla or {}).get("pipeline", [])],
@@ -285,7 +283,7 @@ class SimWorld:
     def resume_source(self, sid):
         self.log(f"{sid}: weiter")
 
-    def source_command(self, sid, cmd):
+    def source_command(self, sid, cmd, value=None):
         self.log(f"{sid}: {cmd}")
         if sid in EXTERNAL and EXTERNAL[sid]["duration"]:
             meta = self._external_meta(sid, nr=random.randint(2, 9))
@@ -319,10 +317,9 @@ class SimWorld:
 
     # ── services ──
     def spotify_status(self, secrets):
-        if self.spotify_needs_key and not secrets.has("spotify.soloist_key"):
+        if not secrets.has("spotify.soloist_key"):
             return {"status": "needs_key", "method": "soloist", "device_name": self.device.config.get("device.name")}
-        method = "soloist" if secrets.has("spotify.soloist_key") else "librespot"
-        return {"status": "ready", "method": method, "device_name": self.device.config.get("device.name"),
+        return {"status": "ready", "method": "soloist", "device_name": self.device.config.get("device.name"),
                 "key_expires": secrets.get("spotify.key_expires")}
 
     def pending_login(self, provider):
@@ -678,8 +675,6 @@ class SimWorld:
         elif name == "lyrion_external":
             self.lyrion_external = data.get("server") or None
             d.publish_services()
-        elif name == "spotify_needs_key":
-            self.spotify_needs_key = bool(data["on"])
             d.publish_services()
         elif name == "tidal_confirm":
             d.service_login("tidal", {"action": "confirm_sim"})

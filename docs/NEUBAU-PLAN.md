@@ -430,7 +430,7 @@ die Funktionsliste in Abschnitt 2 war also vollständig. Noch fehlend oder nur t
 | Credits/Lizenzen | erledigt: Lizenzseite aus Buildroot `show-info`, ABACUS-Links (Forum, Produktseite, TeamViewer) |
 | Infoscreen, Display-Drehung | erledigt: `aroio-infoscreen` auf tty1 (Terminus 16×32) |
 | IR-Fernbedienung, Drehgeber, Pause-Taste | erledigt: rc-core + evdev (`inputs.py`), Aroio-Fernbedienung (RC5) vorbelegt, Anlernen in der App |
-| Spotify | erledigt: librespot 0.8.0 (Zeroconf, Titel/Cover/Lautstärke über `spotify-event`); Soloist bleibt offen |
+| Spotify | erledigt: Spotify Soloist mit eigenem Schlüssel (Einstellungen › Dienste › Spotify), über PulseAudio in die Loopback, Steuerung über die WebSocket-Schnittstelle; librespot entfernt (bekommt für viele Konten keinen Audio-Schlüssel) |
 | NetJack | erledigt (15.11.2026): abschaltbare Quelle, Aroio ist NetJack-Master wie in 5.1 (`aroio-netjack`), Rate im Expertenmodus |
 
 **Größe:** 5.1 ist 170 MB (FAT mit 81-MB-zImage, System komplett im RAM). Unser Image ist 1,27 GB, davon

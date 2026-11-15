@@ -12,7 +12,7 @@
 #          AROIO_RAUC_KEY=/path/key.pem      release signing key (CI); the certificate is in the repo
 #          AROIO_BUILD_VOLUME=aroio-build    Docker volume or absolute host directory for the Buildroot output
 
-BR_VERSION ?= 2026.08.1
+BR_VERSION ?= 2026.11-rc1
 BR_DIR ?= $(CURDIR)/buildroot
 OUT ?= $(CURDIR)/output/build
 BR2_DL_DIR ?= $(CURDIR)/output/dl
@@ -22,6 +22,8 @@ AROIO_VERSION ?= dev
 AROIO_PROFILES ?=
 AROIO_BUILD_VOLUME ?= aroio-build
 AROIO_RAUC_KEY ?=
+# name of the build container (CI stops it by name when a run has to hand over)
+AROIO_CONTAINER ?= aroio-build-run
 # development images only: your public SSH key for root login (never in release builds)
 AROIO_SSH_PUBKEY ?= $(if $(filter dev,$(AROIO_VERSION)),$(shell cat $(HOME)/.ssh/id_ed25519.pub $(HOME)/.ssh/id_rsa.pub 2>/dev/null | head -1))
 export BR2_DL_DIR AROIO_PROFILE AROIO_PROFILES AROIO_VERSION AROIO_SSH_PUBKEY
@@ -79,7 +81,7 @@ RAUC_KEY_ARGS = $(if $(AROIO_RAUC_KEY),-v $(abspath $(AROIO_RAUC_KEY)):/keys/key
 
 docker-image: web
 	docker build -t aroio-build docker
-	docker run --rm -v $(CURDIR):/work -v $(AROIO_BUILD_VOLUME):/build -w /work $(RAUC_KEY_ARGS) \
+	docker run --rm --name $(AROIO_CONTAINER) -v $(CURDIR):/work -v $(AROIO_BUILD_VOLUME):/build -w /work $(RAUC_KEY_ARGS) \
 		-e AROIO_PROFILE=$(AROIO_PROFILE) -e AROIO_PROFILES="$(AROIO_PROFILES)" -e AROIO_VERSION=$(AROIO_VERSION) \
 		-e AROIO_SSH_PUBKEY="$(AROIO_SSH_PUBKEY)" aroio-build \
 		make image BR_DIR=/build/buildroot OUT=/build/out BR2_DL_DIR=/build/dl COPY_TO=/work/output

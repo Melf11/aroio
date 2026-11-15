@@ -1,7 +1,7 @@
 """Bluetooth playback on the device -> Device.source_started/stopped/external_meta.
 
 bluealsa-aplay plays every A2DP stream into the loopback but tells nobody.
-This watcher asks BlueALSA which sink PCMs are running (`bluealsa-cli`) and
+This watcher asks BlueALSA which sink PCMs are running (`bluealsactl`) and
 BlueZ for the AVRCP track of the phone (MediaPlayer1.Track via busctl). It
 also sends AVRCP pause when another source takes over.
 """
@@ -17,7 +17,7 @@ PCM = re.compile(r"^/org/bluealsa/(hci\d+)/dev_([0-9A-F_]{17})/a2dpsnk/source$")
 
 
 def parse_pcms(text):
-    """`bluealsa-cli list-pcms` -> [(path, "AA:BB:...")] for A2DP sink streams."""
+    """`bluealsactl list-pcms` -> [(path, "AA:BB:...")] for A2DP sink streams."""
     out = []
     for line in text.split():
         m = PCM.match(line.strip())
@@ -27,7 +27,7 @@ def parse_pcms(text):
 
 
 def parse_running(info):
-    """`bluealsa-cli info <pcm>` -> True/False (line "Running: true")."""
+    """`bluealsactl info <pcm>` -> True/False (line "Running: true")."""
     m = re.search(r"^Running:\s*(\w+)", info, re.M)
     return bool(m and m[1].lower() in ("true", "yes", "1"))
 
@@ -104,8 +104,8 @@ class BluetoothWatch:
 
     async def poll(self):
         running = None
-        for path, addr in parse_pcms(await _out("bluealsa-cli", "list-pcms")):
-            info = await _out("bluealsa-cli", "info", path)
+        for path, addr in parse_pcms(await _out("bluealsactl", "list-pcms")):
+            info = await _out("bluealsactl", "info", path)
             if parse_running(info):
                 running = (path, addr, info)
                 break

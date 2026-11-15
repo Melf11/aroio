@@ -6,7 +6,8 @@ bluetooth.service
 bluealsa.service
 bluealsa-aplay.service
 aroio-bt-agent.service
-aroio-spotify.service
+aroio-soloist.service
+aroio-soloist-update.timer
 upmpdcli.service
 mpd.service
 squeezelite.service

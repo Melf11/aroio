@@ -6,7 +6,7 @@ import sys
 
 KNOWN_URLS = {
     "camilladsp": "https://github.com/HEnquist/camilladsp", "squeezelite": "https://github.com/ralph-irving/squeezelite",
-    "shairport-sync": "https://github.com/mikebrady/shairport-sync", "librespot": "https://github.com/librespot-org/librespot",
+    "shairport-sync": "https://github.com/mikebrady/shairport-sync",
     "linux": "https://github.com/raspberrypi/linux", "bluez5_utils": "https://www.bluez.org",
     "bluez-alsa": "https://github.com/arkq/bluez-alsa", "python3": "https://www.python.org", "systemd": "https://systemd.io",
 }

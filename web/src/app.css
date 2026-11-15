@@ -111,6 +111,9 @@ a { color: var(--brand-ink); text-underline-offset: 3px; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+/* Headings get focus after navigation only so screen readers announce the new page;
+   they are not controls, and Safari would draw a frame that makes them look like inputs. */
+h1[tabindex="-1"]:focus { outline: none; }
 ::selection { background: var(--brand); color: var(--on-brand); }
 
 .sr-only {
