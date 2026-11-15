@@ -58,7 +58,7 @@ image: buildroot
 	test -f web/dist/index.html || { echo "web/dist fehlt: zuerst 'make web'"; exit 1; }
 	$(MAKE) -C $(BR_DIR) BR2_EXTERNAL=$(CURDIR)/br2-external O=$(OUT) aroio_rpi_defconfig
 	$(MAKE) -C $(OUT) host-rust-bin
-	HOST_DIR=$(OUT)/host tools/vendor-camilladsp.sh
+	HOST_DIR=$(OUT)/host BR_DIR=$(BR_DIR) tools/vendor-camilladsp.sh
 	# package list with licenses for the app (aroiod.mk turns it into licenses.json)
 	$(MAKE) -s -C $(OUT) show-info > $(OUT)/show-info.json
 	# our own packages and the boot files (config.txt, cmdline.txt) come from this repository: fresh on every build

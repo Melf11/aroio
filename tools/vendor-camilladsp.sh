@@ -1,14 +1,16 @@
 #!/bin/sh
 # Builds the vendored CamillaDSP source archive Buildroot expects in its download
 # directory (upstream has no Cargo.lock). Runs in the build container.
-#   HOST_DIR=<buildroot output>/host BR2_DL_DIR=<dl> tools/vendor-camilladsp.sh
+#   HOST_DIR=<buildroot output>/host BR2_DL_DIR=<dl> BR_DIR=<buildroot> tools/vendor-camilladsp.sh
 # The first run creates br2-external/package/camilladsp/Cargo.lock: commit it,
 # later runs reuse it, so builds are reproducible.
 set -eu
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$REPO/br2-external/package/camilladsp"
 VER=$(sed -n 's/^CAMILLADSP_VERSION = //p' "$PKG/camilladsp.mk")
-OUT="${BR2_DL_DIR:?}/camilladsp/camilladsp-$VER-cargo4.tar.gz"
+# archive name suffix of vendored cargo sources: changes with Buildroot (-cargo4, -cargo6 …)
+SUFFIX=$(sed -n 's/^BR_FMT_VERSION_cargo = //p' "${BR_DIR:?}/package/pkg-download.mk")
+OUT="${BR2_DL_DIR:?}/camilladsp/camilladsp-$VER${SUFFIX:?}.tar.gz"
 CARGO="${HOST_DIR:?}/bin/cargo"
 LOCK="$PKG/Cargo.lock.$VER"
 
