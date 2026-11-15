@@ -167,6 +167,20 @@ test('Eigener Equalizer ohne Messmikrofon', async ({ page, request }) => {
   const id = new URL(page.url()).pathname.split('/').pop();
   await expect.poll(async () => (await (await api(request, '/dsp/presets/' + id, undefined, 'get')).json()).peq.R[0].gain).toBe(3);
   await axe(page, 'eigener-equalizer');
+  // in the chart: drag filter 2 (mids) to the right and up; keyboard on filter 3
+  const preset = async () => (await (await api(request, '/dsp/presets/' + id, undefined, 'get')).json());
+  const h2 = page.getByRole('button', { name: /^Filter 2:/ });
+  const box = await h2.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 40, box.y + box.height / 2 - 30, { steps: 5 });
+  await page.mouse.up();
+  await expect.poll(async () => { const f = (await preset()).peq.L[1]; return f.freq > 1000 && f.gain > 0; }).toBe(true);
+  const h3 = page.getByRole('button', { name: /^Filter 3:/ });
+  await h3.focus();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Control+ArrowUp');
+  await expect.poll(async () => { const f = (await preset()).peq.R[2]; return [f.gain, f.q]; }).toEqual([-0.5, 0.77]);
 });
 
 test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, request }) => {

@@ -66,6 +66,53 @@
   const toPos = (f) => Math.round((Math.log(f / 20) / Math.log(1000)) * 1000);
   const fromPos = (p) => Math.round(20 * Math.pow(1000, p / 1000) * 10) / 10;
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  // ── handles in the chart: drag left/right = frequency, up/down = level,
+  //    with Cmd (Mac) or Ctrl up/down = Q. Keyboard: arrow keys, same modifiers. ──
+  const roundF = (v) => (v < 100 ? Math.round(v * 10) / 10 : Math.round(v));
+  const r1 = (v) => Math.round(v * 10) / 10, r2 = (v) => Math.round(v * 100) / 100;
+  const GMIN = -20, GMAX = 12;
+  let drag = $state(null);
+  const qKey = (e) => e.metaKey || e.ctrlKey;
+  function down(e, i) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.focus();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    open = i;
+    drag = { i, q: qKey(e), y0: e.clientY, q0: list[i].q };
+  }
+  function move(e, h) {
+    if (!drag) return;
+    const f = bands[channel][drag.i], v = h.valueAt(e);
+    if (qKey(e) !== drag.q) drag = { ...drag, q: qKey(e), y0: e.clientY, q0: f.q };   // modifier pressed mid-drag
+    f.freq = roundF(clamp(v.freq, 10, 24000));
+    if (drag.q) f.q = r2(clamp(drag.q0 * Math.pow(2, (drag.y0 - e.clientY) / 60), 0.1, 20));
+    else if (hasGain(f.type)) f.gain = r1(clamp(v.db, GMIN, GMAX));
+    changed();
+  }
+  function up() {
+    if (!drag) return;
+    announce(summary(bands[channel][drag.i]));
+    drag = null;
+  }
+  function key(e, i) {
+    const f = bands[channel][i];
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      f.freq = roundF(clamp(f.freq * Math.pow(2, (e.key === 'ArrowRight' ? 1 : -1) / (e.shiftKey ? 3 : 12)), 10, 24000));
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const up = e.key === 'ArrowUp';
+      if (qKey(e)) f.q = r2(clamp(f.q * (up ? 1.1 : 1 / 1.1), 0.1, 20));
+      else if (hasGain(f.type)) f.gain = r1(clamp(f.gain + (up ? 0.5 : -0.5), GMIN, GMAX));
+      else return;
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      remove(i);
+      return;
+    } else return;
+    e.preventDefault();
+    changed();
+    announce(summary(f));
+  }
   const summary = (f) => `${typeLabels[f.type]} · ${hz(f.freq)}${hasGain(f.type) ? ' · ' + db(f.gain) : ''} · Q ${f.q}`;
 </script>
 
@@ -79,8 +126,23 @@
     </button>
   </div>
 
-  <FrequencyChart {freqs} {series} fmin={20} {fmax} ymin={-20} ymax={15}
+  {#snippet handles(h)}
+    {#each list as f, i (i)}
+      <g class="handle" class:active={open === i} class:dragging={drag?.i === i}
+         transform="translate({h.x(clamp(f.freq, 20, fmax)).toFixed(1)} {h.y(hasGain(f.type) ? f.gain : 0).toFixed(1)})"
+         tabindex="0" role="button" aria-describedby="peq-drag-hint"
+         aria-label={t('Filter {n}: {s}', { n: i + 1, s: summary(f) })}
+         onpointerdown={(e) => down(e, i)} onpointermove={(e) => move(e, h)} onpointerup={up} onpointercancel={up}
+         onkeydown={(e) => key(e, i)} onfocus={() => (open = i)}>
+        <circle r="22" class="hit" />
+        <circle r="11" class="dot" />
+        <text y="4" text-anchor="middle" aria-hidden="true">{i + 1}</text>
+      </g>
+    {/each}
+  {/snippet}
+  <FrequencyChart {freqs} {series} fmin={20} {fmax} ymin={-20} ymax={15} overlay={handles}
     summary={t('Wirkung der Filter {ch}', { ch: linked ? t('beider Kanäle') : channel === 'L' ? t('links') : t('rechts') })} />
+  <p class="muted small" id="peq-drag-hint">{t('Punkte in der Kurve ziehen: links/rechts ändert die Frequenz, hoch/runter den Pegel, mit ⌘ oder Strg die Güte. Mit der Tastatur: Pfeiltasten.')}</p>
 
   <ol class="bands">
     {#each list as f, i (i)}
@@ -144,4 +206,12 @@
   .param .num .input { width: 6.5em; min-height: 40px; padding: 6px 8px; }
   .param input[type=range] { grid-area: range; width: 100%; height: var(--tap); accent-color: var(--brand-ink); margin: 0; }
   .danger-text { color: var(--danger); align-self: flex-start; }
+  .handle { cursor: grab; touch-action: none; outline: none; }
+  .handle.dragging { cursor: grabbing; }
+  .handle .hit { fill: transparent; }
+  .handle .dot { fill: var(--surface); stroke: var(--brand-ink); stroke-width: 2.5; }
+  .handle.active .dot { fill: var(--brand-ink); }
+  .handle text { font-size: 11px; font-weight: 700; fill: var(--brand-ink); pointer-events: none; font-family: var(--font); }
+  .handle.active text { fill: var(--on-brand); }
+  .handle:focus-visible .dot { stroke: var(--focus); stroke-width: 4; }
 </style>

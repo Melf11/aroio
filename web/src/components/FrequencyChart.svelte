@@ -5,7 +5,10 @@
   import { hz, db } from '../lib/format.js';
   import { t } from '../lib/i18n.svelte.js';
 
-  let { freqs, series, fmin = 20, fmax = 20000, ymin = -15, ymax = 15, summary = '' } = $props();
+  // overlay: optional snippet drawn on top of the curves (e.g. draggable filter handles);
+  // it gets the scales and a function from pointer events to chart values.
+  let { freqs, series, fmin = 20, fmax = 20000, ymin = -15, ymax = 15, summary = '', overlay = null } = $props();
+  let svgEl = $state(null);
 
   // drawn at the real pixel width, so labels keep their size on small screens;
   // narrow screens get a relatively taller chart and fewer frequency labels
@@ -15,6 +18,14 @@
   const PAD = { l: 40, r: 12, t: 12, b: 26 };
   const x = (f) => PAD.l + (Math.log10(f / fmin) / Math.log10(fmax / fmin)) * (W - PAD.l - PAD.r);
   const y = (v) => PAD.t + ((ymax - Math.max(ymin, Math.min(ymax, v))) / (ymax - ymin)) * (height - PAD.t - PAD.b);
+  const span = () => ({ w: W - PAD.l - PAD.r, h: height - PAD.t - PAD.b });
+  // pointer position -> {freq, db} (the svg may be scaled by CSS)
+  function valueAt(e) {
+    const r = svgEl.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * W, py = ((e.clientY - r.top) / r.height) * height;
+    const fx = Math.min(1, Math.max(0, (px - PAD.l) / span().w)), fy = (py - PAD.t) / span().h;
+    return { freq: fmin * Math.pow(fmax / fmin, fx), db: ymax - fy * (ymax - ymin), px, py };
+  }
   const ticks = $derived((W < 480 ? [20, 100, 1000, 10000] : [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]).filter((f) => f >= fmin && f <= fmax));
   const ystep = $derived(height < 240 ? 10 : 5);
   const yticks = $derived(Array.from({ length: Math.floor((ymax - ymin) / ystep) + 1 }, (_, i) => ymin + i * ystep));
@@ -32,7 +43,7 @@
 
 <div class="chart" bind:clientWidth={width}>
 <figure>
-  <svg viewBox="0 0 {W} {height}" role="img" aria-label={summary || t('Frequenzgang')} width={W} height={height}>
+  <svg bind:this={svgEl} viewBox="0 0 {W} {height}" role={overlay ? 'group' : 'img'} aria-label={summary || t('Frequenzgang')} width={W} height={height}>
     {#each yticks as v}
       <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} class:zero={v === 0} class="grid" />
       <text x={PAD.l - 6} y={y(v) + 4} text-anchor="end" class="tick">{v > 0 ? '+' + v : v}</text>
@@ -45,6 +56,7 @@
       <path d={path(s.values)} fill="none" stroke={s.color} stroke-width={s.width || 2.5}
             stroke-dasharray={s.dash || null} stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
     {/each}
+    {#if overlay}{@render overlay({ x, y, valueAt, ymin, ymax })}{/if}
   </svg>
   <figcaption class="legend">
     {#each series as s}
