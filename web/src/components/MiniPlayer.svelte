@@ -1,5 +1,5 @@
 <script>
-  import { Play, Pause, SkipForward } from '@lucide/svelte';
+  import { Play, Pause, Square, SkipForward } from '@lucide/svelte';
   import Cover from './Cover.svelte';
   import LevelMeter from './LevelMeter.svelte';
   import { app, position, toast } from '../lib/state.svelte.js';
@@ -23,9 +23,13 @@
       </span>
     </a>
     <LevelMeter variant="mini" />
-    <button class="icon-btn" type="button" onclick={() => act('toggle')} aria-label={p.state === 'playing' ? t('Pause') : t('Abspielen')}>
-      {#if p.state === 'playing'}<Pause size={24} fill="currentColor" aria-hidden="true" />{:else}<Play size={24} fill="currentColor" aria-hidden="true" />{/if}
-    </button>
+    {#if p.state === 'playing' && p.can?.pause}
+      <button class="icon-btn" type="button" onclick={() => act('pause')} aria-label={t('Pause')}><Pause size={24} fill="currentColor" aria-hidden="true" /></button>
+    {:else if p.state === 'playing' && p.can?.stop}
+      <button class="icon-btn" type="button" onclick={() => act('stop')} aria-label={t('Stopp')}><Square size={20} fill="currentColor" aria-hidden="true" /></button>
+    {:else if p.state !== 'playing' && p.can?.play}
+      <button class="icon-btn" type="button" onclick={() => act('play')} aria-label={t('Abspielen')}><Play size={24} fill="currentColor" aria-hidden="true" /></button>
+    {/if}
     {#if p.can?.next}
       <button class="icon-btn" type="button" onclick={() => act('next')} aria-label={t('Nächster Titel')}><SkipForward size={22} aria-hidden="true" /></button>
     {/if}

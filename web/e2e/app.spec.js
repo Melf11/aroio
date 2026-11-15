@@ -275,4 +275,12 @@ test('NetJack einschalten, Rate wählen, Rechner spielt', async ({ page, request
   await api(request, '/sim/external_start', { source: 'netjack' });
   await page.goto('/');
   await expect(page.getByText('Studio-PC').first()).toBeVisible();
+  // NetJack can only be ended on the Aroio: no skip buttons, Stopp instead of Pause
+  const main = page.getByRole('region', { name: 'Läuft gerade' });
+  await expect(main.getByRole('button', { name: 'Nächster Titel' })).toHaveCount(0);
+  await expect(main.getByRole('button', { name: 'Pause' })).toHaveCount(0);
+  await main.getByRole('button', { name: 'Stopp' }).click();
+  await expect(page.getByText('Weiter geht es in der App auf dem Zuspieler.')).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Abspielen' })).toHaveCount(0);
+  await axe(page, 'NetJack gestoppt');
 });

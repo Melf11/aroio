@@ -1,5 +1,5 @@
 <script>
-  import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ListMusic, ChevronDown, BadgeCheck, AudioWaveform, Radio, Smartphone } from '@lucide/svelte';
+  import { Play, Pause, Square, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ListMusic, ChevronDown, BadgeCheck, AudioWaveform, Radio, Smartphone } from '@lucide/svelte';
   import Cover from '../components/Cover.svelte';
   import VolumeSlider from '../components/VolumeSlider.svelte';
   import QueueList from '../components/QueueList.svelte';
@@ -83,19 +83,35 @@
         {/if}
       </div>
 
-      <div class="transport">
-        <button class="icon-btn side" type="button" disabled={!p.can?.shuffle} aria-pressed={p.shuffle}
-                onclick={() => act('shuffle', { on: !p.shuffle })} aria-label={t('Zufällige Reihenfolge')}><Shuffle size={22} aria-hidden="true" /></button>
-        <button class="icon-btn" type="button" disabled={!p.can?.previous} onclick={() => act('previous')} aria-label={t('Vorheriger Titel')}><SkipBack size={30} fill="currentColor" aria-hidden="true" /></button>
-        <button class="play" type="button" onclick={() => act('toggle')} aria-label={p.state === 'playing' ? t('Pause') : t('Abspielen')}>
-          {#if p.state === 'playing'}<Pause size={34} fill="currentColor" aria-hidden="true" />{:else}<Play size={34} fill="currentColor" aria-hidden="true" />{/if}
-        </button>
-        <button class="icon-btn" type="button" disabled={!p.can?.next} onclick={() => act('next')} aria-label={t('Nächster Titel')}><SkipForward size={30} fill="currentColor" aria-hidden="true" /></button>
-        <button class="icon-btn side" type="button" disabled={!p.can?.queue} aria-pressed={p.repeat !== 'off'}
-                onclick={() => act('repeat', { mode: repeatNext[p.repeat] })} aria-label={repeatLabel}>
-          {#if p.repeat === 'one'}<Repeat1 size={22} aria-hidden="true" />{:else}<Repeat size={22} aria-hidden="true" />{/if}
-        </button>
+      <!-- only buttons that work with this source (p.can comes from the Aroio) -->
+      <div class="transport" class:few={!p.can?.shuffle && !p.can?.queue}>
+        {#if p.can?.shuffle}
+          <button class="icon-btn side" type="button" aria-pressed={p.shuffle}
+                  onclick={() => act('shuffle', { on: !p.shuffle })} aria-label={t('Zufällige Reihenfolge')}><Shuffle size={22} aria-hidden="true" /></button>
+        {:else if p.can?.queue}<span class="slot side" aria-hidden="true"></span>{/if}
+        {#if p.can?.previous}
+          <button class="icon-btn" type="button" onclick={() => act('previous')} aria-label={t('Vorheriger Titel')}><SkipBack size={30} fill="currentColor" aria-hidden="true" /></button>
+        {:else if p.can?.next}<span class="slot" aria-hidden="true"></span>{/if}
+        {#if p.state === 'playing' && p.can?.pause}
+          <button class="play" type="button" onclick={() => act('pause')} aria-label={t('Pause')}><Pause size={34} fill="currentColor" aria-hidden="true" /></button>
+        {:else if p.state === 'playing' && p.can?.stop}
+          <button class="play" type="button" onclick={() => act('stop')} aria-label={t('Stopp')}><Square size={28} fill="currentColor" aria-hidden="true" /></button>
+        {:else if p.state !== 'playing' && p.can?.play}
+          <button class="play" type="button" onclick={() => act('play')} aria-label={t('Abspielen')}><Play size={34} fill="currentColor" aria-hidden="true" /></button>
+        {/if}
+        {#if p.can?.next}
+          <button class="icon-btn" type="button" onclick={() => act('next')} aria-label={t('Nächster Titel')}><SkipForward size={30} fill="currentColor" aria-hidden="true" /></button>
+        {:else if p.can?.previous}<span class="slot" aria-hidden="true"></span>{/if}
+        {#if p.can?.queue}
+          <button class="icon-btn side" type="button" aria-pressed={p.repeat !== 'off'}
+                  onclick={() => act('repeat', { mode: repeatNext[p.repeat] })} aria-label={repeatLabel}>
+            {#if p.repeat === 'one'}<Repeat1 size={22} aria-hidden="true" />{:else}<Repeat size={22} aria-hidden="true" />{/if}
+          </button>
+        {:else if p.can?.shuffle}<span class="slot side" aria-hidden="true"></span>{/if}
       </div>
+      {#if p.state !== 'playing' && !p.can?.play && p.source !== 'lms'}
+        <p class="muted small control-hint">{t('Weiter geht es in der App auf dem Zuspieler.')}</p>
+      {/if}
 
       <div class="volume">
         {#if d?.fixed_level}
@@ -161,7 +177,10 @@
   .transport .icon-btn { width: 56px; height: 56px; }
   .transport .icon-btn.side { width: 48px; height: 48px; color: var(--text-2); }
   .transport .icon-btn[aria-pressed="true"] { color: var(--brand-ink); background: var(--brand-soft); }
-  .transport .icon-btn:disabled { opacity: .35; cursor: default; }
+  .transport.few { justify-content: center; gap: 28px; }
+  .transport .slot { width: 56px; height: 56px; }
+  .transport .slot.side { width: 48px; height: 48px; }
+  .control-hint { text-align: center; margin: 0; }
   .play { width: 76px; height: 76px; border-radius: 50%; border: 0; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; box-shadow: 0 6px 20px rgb(0 170 170 / .35); }
   .play:active { transform: scale(.96); }
 

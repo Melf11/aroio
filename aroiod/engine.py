@@ -36,6 +36,11 @@ SOURCES = {
     "netjack": {"name": "NetJack", "short": "NetJack", "controls": False},
 }
 
+# What the Aroio can do with a playing source (the world may know better, see
+# World.source_controls): only these buttons appear in the player.
+TRANSPORT = {"play", "pause", "next", "previous"}
+LMS_CONTROLS = TRANSPORT | {"seek", "shuffle", "queue"}
+
 
 def volume_db(percent):
     """0..100 % -> dB. Steeper at the bottom like an analogue pot."""
@@ -184,12 +189,22 @@ class Device:
             "volume_db": None if self.fixed_level else volume_db(0 if self.muted else self.volume),
             "volume_limit": self.config.get("audio.volume_limit"),
             "muted": self.muted,
-            "can": {"seek": bool(self.meta and self.meta.get("duration")) and self.source in ("lms", "spotify"),
-                    "next": self.source in ("lms", "spotify", "airplay", "bluetooth", "upnp", "roon"),
-                    "previous": self.source in ("lms", "spotify", "airplay", "bluetooth", "upnp", "roon"),
-                    "queue": self.source == "lms", "shuffle": self.source in ("lms", "spotify")},
+            "can": self.can(),
             "signal": sig,
         })
+
+    def controls(self):
+        """The set of things the current source lets the Aroio do (play, pause, stop, next,
+        previous, seek, shuffle, queue)."""
+        if self.source in (None, "lms"):
+            return LMS_CONTROLS
+        return set(self.world.source_controls(self.source))
+
+    def can(self):
+        c = self.controls()
+        out = {k: k in c for k in ("play", "pause", "stop", "next", "previous", "shuffle", "queue")}
+        out["seek"] = "seek" in c and bool(self.meta and self.meta.get("duration"))
+        return out
 
     def publish_queue(self):
         items = []
@@ -485,6 +500,8 @@ class Device:
                 self._start_track(max(self.index, 0))
                 return
             self.source_started("lms")
+        elif "play" not in self.controls():
+            return                                  # only the sender can start it again
         else:
             self.world.resume_source(self.source)
         self.state = "playing"
@@ -495,6 +512,10 @@ class Device:
 
     def pause(self):
         if self.state != "playing":
+            return
+        if self.source != "lms" and "pause" not in self.controls():
+            if "stop" in self.controls():
+                self.stop()                         # the only way to silence it: end the session
             return
         self._freeze()
         self.state = "paused"
@@ -507,6 +528,8 @@ class Device:
         self.pause() if self.state == "playing" else self.play()
 
     def stop(self):
+        if self.source not in (None, "lms") and self.state == "playing":
+            self.world.pause_source(self.source)    # ends the session of the sender
         self._freeze()
         self.pos_base = 0.0
         self.state = "stopped"
@@ -519,7 +542,7 @@ class Device:
                 self._start_track(self.index + 1)
             elif self.repeat == "all" and self.queue:
                 self._start_track(0)
-        elif self.source:
+        elif self.source and "next" in self.controls():
             self.world.source_command(self.source, "next")
 
     def previous(self):
@@ -528,7 +551,7 @@ class Device:
                 self.seek(0)
             else:
                 self._start_track(self.index - 1)
-        elif self.source:
+        elif self.source and "previous" in self.controls():
             self.world.source_command(self.source, "previous")
 
     def seek(self, seconds):

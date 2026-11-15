@@ -669,6 +669,7 @@ export default {
   '„Anlernen“ wählen und innerhalb von 15 Sekunden die gewünschte Taste drücken.': 'Choose “Learn” and press the button within 15 seconds.',
   'Wiedergabe / Pause': 'Play / pause',
   'Stopp': 'Stop',
+  'Weiter geht es in der App auf dem Zuspieler.': 'Continue in the app on the playing device.',
   'Klangeinstellung 1': 'Sound setting 1',
   'Klangeinstellung 2': 'Sound setting 2',
   'Klangeinstellung 3': 'Sound setting 3',

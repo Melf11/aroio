@@ -272,6 +272,13 @@ class SimWorld:
         return round(min(100.0, (base + fir) / cores), 1)
 
     # ── sources ──
+    def source_controls(self, sid):
+        """The simulated senders can do everything the protocol allows."""
+        return {"spotify": {"play", "pause", "next", "previous", "seek", "shuffle"},
+                "airplay": {"play", "pause", "next", "previous"}, "bluetooth": {"play", "pause", "next", "previous"},
+                "upnp": {"play", "pause", "next", "previous"}, "roon": {"play", "pause", "next", "previous", "seek"},
+                "netjack": {"stop"}}.get(sid, set())
+
     def pause_source(self, sid, user=False):
         self.log(f"{sid}: angehalten")
 

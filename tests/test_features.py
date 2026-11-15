@@ -256,6 +256,35 @@ async def test_pause_from_app_keeps_sender_and_sender_pause_shows(client, device
     assert calls[-1] == ("airplay", False)                        # switching still lets go of the loopback
 
 
+async def test_player_shows_only_working_controls(client, device):
+    """AirPlay 2 without remote control: only ending the session, no play/skip."""
+    calls = []
+    device.world.source_controls = lambda sid: {"stop"}
+    device.world.pause_source = lambda sid, user=False: calls.append((sid, user))
+    device.world.resume_source = lambda sid: calls.append((sid, "resume"))
+    device.world.source_command = lambda sid, cmd: calls.append((sid, cmd))
+    device.source_started("airplay", {"title": "x", "format": {"rate": 44100}})
+    can = (await state(client))["player"]["can"]
+    assert can["stop"] and not (can["pause"] or can["play"] or can["next"] or can["previous"] or can["seek"])
+    device.next()
+    device.pause()                                   # buttons on the device: pause = end the session
+    assert calls == [("airplay", False)]
+    assert (await state(client))["player"]["state"] == "stopped"
+    device.play()                                    # cannot be started from the Aroio
+    assert calls == [("airplay", False)] and (await state(client))["player"]["state"] == "stopped"
+
+
+def test_real_airplay_controls_need_remote():
+    from aroiod.real import RealWorld
+    from aroiod.airplay_meta import AirplayMeta
+    w = RealWorld()
+    w.airplay = AirplayMeta(None, path="/nonexistent")
+    assert w.source_controls("airplay") == {"stop"}
+    w.airplay.track.remote = {"daid": "AB", "acre": "1"}
+    assert "next" in w.source_controls("airplay")
+    assert w.source_controls("spotify") == {"stop"} and w.source_controls("input") == set()
+
+
 def test_bluetooth_parsers():
     from aroiod import bt_watch as bw
     pcms = "/org/bluealsa/hci0/dev_AA_BB_CC_DD_EE_FF/a2dpsnk/source\n/org/bluealsa/hci0/dev_AA_BB_CC_DD_EE_FF/a2dpsrc/sink\n"

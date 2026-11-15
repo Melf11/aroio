@@ -537,6 +537,19 @@ class RealWorld:
             # closes the way to the loopback until the computer disconnects (aroiod.netjack)
             await _run("systemctl", "kill", "--kill-whom=main", "-s", "SIGUSR1", "aroio-netjack.service")
 
+    def source_controls(self, sid):
+        """What works on the device: AirPlay only with the sender's remote control (an iPhone
+        with AirPlay 2 gives none: then only ending the session), Spotify Connect has no
+        remote interface in librespot (ending only), Bluetooth AVRCP and UPnP (mpd) can do all."""
+        if sid == "airplay":
+            remote = self.airplay.track.remote if getattr(self, "airplay", None) else {}
+            return {"play", "pause", "next", "previous"} if remote.get("acre") else {"stop"}
+        if sid in ("bluetooth", "upnp"):
+            return {"play", "pause", "next", "previous"}
+        if sid in ("spotify", "netjack"):
+            return {"stop"}
+        return set()
+
     def resume_source(self, sid):
         log.info("resume %s", sid)
         self._spawn(self._source_command(sid, "play"))
