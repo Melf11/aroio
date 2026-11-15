@@ -58,6 +58,7 @@ if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then
 fi
 grep -q "rauc.slot=@SLOT@" "$R/usr/share/aroio/boot/cmdline.txt.in" || { echo "cmdline ohne Slot-Kennung"; fail=1; }
 [ -z "$(ls -A "$R/boot" 2>/dev/null)" ] || { echo "Kernel doppelt in /boot"; fail=1; }
+grep -q "BindPaths=/data/timesync" "$R/usr/lib/systemd/system/systemd-timesyncd.service.d/aroio.conf" 2>/dev/null || { echo "Uhrzeit wird nicht gespeichert"; fail=1; }
 # updates from GitHub need TLS in Python, and every image must trust the release key
 chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }
 grep -q "$(sed -n 2p br2-external/board/rpi/rauc/release-cert.pem)" "$R/etc/rauc/keyring.pem" || { echo "Release-Zertifikat fehlt im Keyring"; fail=1; }
