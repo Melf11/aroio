@@ -12,7 +12,7 @@ index 6dca3729..79922ae3 100644
  sha256  1be1df33863f97a7bc1c4d67980bd6c69c9a6fef0a5ee76e6ad6cb91e56e8491  LICENSE.txt
  sha256  743b0f4a0087fe3607167113fffab6f2ca069c8da321763697ab5d0d8411634a  numpy/_build_utils/tempita/LICENSE.txt
 diff --git a/package/python-numpy/python-numpy.mk b/package/python-numpy/python-numpy.mk
-index 6b052569..a55255a2 100644
+index 6b052569..64624150 100644
 --- a/package/python-numpy/python-numpy.mk
 +++ b/package/python-numpy/python-numpy.mk
 @@ -4,9 +4,9 @@
@@ -27,3 +27,18 @@ index 6b052569..a55255a2 100644
  PYTHON_NUMPY_LICENSE = BSD-3-Clause, MIT, Zlib
  PYTHON_NUMPY_LICENSE_FILES = \
  	LICENSE.txt \
+@@ -104,9 +104,12 @@ HOST_PYTHON_NUMPY_CONF_OPTS = -Dblas="" -Dlapack=""
+ # it uses host libraries (like libnpymath.a).
+ # So, the numpy distutils extension packages would explicitly link this
+ # config path for their package environment.
++# NumPy 2.5 no longer installs npymath.ini: only fix it up where it exists.
+ define PYTHON_NUMPY_FIXUP_NPY_PKG_CONFIG_FILES
+-	$(SED) '/^pkgdir=/d;/^prefix=/i pkgdir=$(PYTHON3_PATH)/site-packages/numpy/core' \
+-		$(PYTHON3_PATH)/site-packages/numpy/_core/lib/npy-pkg-config/npymath.ini
++	if [ -f $(PYTHON3_PATH)/site-packages/numpy/_core/lib/npy-pkg-config/npymath.ini ]; then \
++		$(SED) '/^pkgdir=/d;/^prefix=/i pkgdir=$(PYTHON3_PATH)/site-packages/numpy/core' \
++			$(PYTHON3_PATH)/site-packages/numpy/_core/lib/npy-pkg-config/npymath.ini; \
++	fi
+ endef
+ PYTHON_NUMPY_POST_INSTALL_STAGING_HOOKS += PYTHON_NUMPY_FIXUP_NPY_PKG_CONFIG_FILES
+ 
