@@ -37,7 +37,10 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          usr/bin/jackd usr/lib/jack/netmanager.so usr/lib/jack/audioadapter.so usr/lib/jack/jack_dummy.so \
          usr/lib/systemd/system/aroio-netjack.service usr/lib/aroiod/aroiod/netjack.py usr/lib/aroiod/aroiod/updates.py \
          etc/ssl/certs/ca-certificates.crt; do
-    if [ -L "$R/$f" ]; then target="$R$(readlink "$R/$f")"; else target="$R/$f"; fi   # links are absolute
+    target="$R/$f"
+    if [ -L "$target" ]; then   # links point inside the image: absolute (from its root) or relative
+        l=$(readlink "$target"); case "$l" in /*) target="$R$l";; *) target="$(dirname "$target")/$l";; esac
+    fi
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
 [ -z "$(ls "$R/usr/share/aroio-web/assets" | grep sim || true)" ] || { echo "Simulator im Image"; fail=1; }
@@ -110,9 +113,10 @@ for name, cfg in cases.items():
 print(" ".join(cases))
 PY
 for c in $(chroot "$R" /usr/bin/python3 /tmp/gen.py); do
-    out=$(chroot "$R" /usr/bin/camilladsp --check "/tmp/$c.json" 2>&1 | tail -1)
-    printf 'camilladsp %-9s %s\n' "$c" "$out"
-    [ "$out" = "Config is valid" ] || fail=1
+    # 4.1 may log a line after the verdict: look for it in the whole output
+    out=$(chroot "$R" /usr/bin/camilladsp --check "/tmp/$c.json" 2>&1)
+    if echo "$out" | grep -qx "Config is valid"; then printf 'camilladsp %-9s ok\n' "$c"
+    else printf 'camilladsp %-9s %s\n' "$c" "$(echo "$out" | tail -3)"; fail=1; fi
 done
 
 # aroiod in real mode (no CamillaDSP running: it keeps retrying, the app must still work)
