@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="16" fill="#00AAAA"/>
-  <g fill="none" stroke="#062626" stroke-width="4.5" stroke-linecap="round">
+  <!-- light: ABACUS teal with dark bars; dark: dark teal with bright teal bars -->
+  <style>
+    .bg { fill: #00AAAA; } .bars { stroke: #062626; }
+    @media (prefers-color-scheme: dark) { .bg { fill: #0B2E2E; } .bars { stroke: #00C2C2; } }
+  </style>
+  <rect class="bg" width="64" height="64" rx="16"/>
+  <g class="bars" fill="none" stroke-width="4.5" stroke-linecap="round">
     <path d="M14 38v-12M22 44V20M30 40V24M38 48V16M46 40V24M54 34v-4"/>
   </g>
 </svg>
