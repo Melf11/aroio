@@ -90,7 +90,9 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* no double-tap zoom (fast taps on volume and buttons); pinch zoom stays for accessibility */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+body, a, button, input, label, select, [role="slider"] { touch-action: manipulation; }   /* older WebKit looks at the tapped element */
 body {
   margin: 0;
   background: var(--bg);
