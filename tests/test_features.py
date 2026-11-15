@@ -32,6 +32,36 @@ async def test_own_equalizer_without_microphone(client, device):
     assert second["name"] == "Eigener Equalizer 2"
 
 
+def test_loudness_of_presets():
+    from aroiod import dsp
+    assert dsp.loudness_db({"kind": "peq", "gain_db": -3.0, "peq": {"L": [], "R": []}}) == -3.0
+    bass_cut = {"kind": "peq", "gain_db": 0.0,
+                "peq": {ch: [{"type": "lowshelf", "freq": 200.0, "gain": -6.0, "q": 0.7}] for ch in "LR"}}
+    assert -3.0 < dsp.loudness_db(bass_cut) < -0.3          # a bass cut makes music quieter, a bit
+    boost = {"kind": "peq", "gain_db": -6.0,
+             "peq": {ch: [{"type": "peaking", "freq": 1000.0, "gain": 6.0, "q": 1.0}] for ch in "LR"}}
+    assert -6.0 < dsp.loudness_db(boost) < -2.0               # headroom minus the boost's share
+
+
+async def test_compare_without_correction_is_loudness_matched(client, device):
+    p = await post(client, "/dsp/presets", {})
+    peq = {ch: [{"type": "lowshelf", "freq": 100.0, "gain": 6.0, "q": 0.7}] for ch in "LR"}
+    r = await client.patch(f"/api/v1/dsp/presets/{p['id']}", json={"peq": peq})
+    assert r.status == 200
+    preset = next(x for x in device.config.get("dsp.presets") if x["id"] == p["id"])
+    assert preset["gain_db"] < 0                               # automatic headroom for the boost
+    await post(client, "/dsp/compare", {"bypass": True})
+    status = (await state(client))["dsp"]["status"]
+    from aroiod import dsp
+    expected = min(0.0, dsp.loudness_db(preset, status["rate_out"]))
+    assert status["compare_gain_db"] == expected and expected < 0
+    cfg = device.apply_dsp()
+    assert cfg["filters"]["preset_gain"]["parameters"]["gain"] == expected
+    assert not any(k.startswith("peq_") for k in cfg["filters"])     # no correction, only the level
+    await post(client, "/dsp/compare", {"bypass": False})
+    assert (await state(client))["dsp"]["status"]["compare_gain_db"] is None
+
+
 async def test_factory_filters(client, device):
     ids = {p["id"]: p for p in device.config.get("dsp.presets")}
     assert {"werk-bbcdip", "werk-echo"} <= set(ids)

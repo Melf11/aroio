@@ -281,6 +281,10 @@ class Device:
         d = self.config.data["dsp"]
         if not d["enabled"] or self.compare_bypass or self.measuring:
             return dsp_bypass()
+        return self.selected_preset()
+
+    def selected_preset(self):
+        d = self.config.data["dsp"]
         return next((p for p in d["presets"] if p["id"] == d["active_preset"]), dsp_bypass())
 
     def apply_dsp(self):
@@ -288,6 +292,12 @@ class Device:
         c = self.config.data
         rate_in = self.rate
         preset = self.active_preset()
+        # A/B comparison: "without correction" at the rate and the loudness of the preset
+        # being compared, so only the sound differs
+        compared = self.selected_preset() if (self.compare_bypass and c["dsp"]["enabled"]
+                                              and not self.measuring) else None
+        if compared and compared["kind"] == "bypass":
+            compared = None
         fixed = c["audio"]["rate_mode"] == "fixed"
         rate_out = c["audio"]["fixed_rate"] if fixed else rate_in
         note = None
@@ -298,14 +308,22 @@ class Device:
             family = [r for r in allowed if (r % 44100 == 0) == (rate_out % 44100 == 0)] or allowed
             rate_out = max(family)
             note = "max_rate"
-        fir_dir = self.preset_dir(preset)
-        if preset["kind"] == "fir":
-            have = sorted(int(r) for r in preset.get("fir", {}))
+        basis = compared or preset
+        fir_dir = self.preset_dir(basis)
+        if basis["kind"] == "fir":
+            have = sorted(int(r) for r in basis.get("fir", {}))
             if rate_out not in have:
                 # nearest available rate, prefer same family (44.1k / 48k multiples)
                 family = [r for r in have if (r % 44100 == 0) == (rate_out % 44100 == 0)] or have
                 rate_out = min(family, key=lambda r: abs(r - rate_out))
                 note = "missing_rate"
+        if compared:
+            try:
+                match = min(0.0, dsp.loudness_db(compared, rate_out, fir_dir))
+            except (OSError, ValueError) as exc:
+                log.warning("loudness of %s: %s", compared["id"], exc)
+                match = float(compared.get("gain_db", 0.0))
+            preset = dict(preset, gain_db=match)
         try:
             cfg = dsp.camilla_config(
                 preset, rate_out, ms_cleaner=c["dsp"]["ms_cleaner"] and c["dsp"]["enabled"],
@@ -325,6 +343,7 @@ class Device:
                            "pipeline_empty": dsp.is_bit_perfect(cfg),
                            "processing": bool(cfg["pipeline"]), "note": note,
                            "preset": preset["name"], "fir_taps": taps,
+                           "compare_gain_db": preset["gain_db"] if compared else None,
                            "too_heavy": bool(taps and taps > limit), "fir_limit": limit,
                            "load": self.world.dsp_load(cfg, taps), "measuring": self.measuring,
                            "recordings": (self.data / "measurements" / "last" / "info.txt").exists()}

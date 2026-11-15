@@ -79,7 +79,8 @@
     {#if dsp.active_preset !== 'bypass' && dsp.enabled}
       <div class="ab card">
         <Ear size={22} aria-hidden="true" />
-        <p class="grow">{t('Höre den Unterschied: kurz ohne Korrektur vergleichen.')}</p>
+        <p class="grow">{t('Höre den Unterschied: kurz ohne Korrektur vergleichen.')}
+          <span class="muted small block">{t('Beide Varianten spielen gleich laut, damit du nur den Klang vergleichst.')}{#if dsp.compare_bypass && dsp.status?.compare_gain_db}{' '}{t('Ohne Korrektur jetzt {g} leiser.', { g: Math.abs(dsp.status.compare_gain_db).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' dB' })}{/if}</span></p>
         <button class="btn" type="button" aria-pressed={dsp.compare_bypass} onclick={() => compare(!dsp.compare_bypass)}>
           {dsp.compare_bypass ? t('Korrektur wieder an') : t('Ohne Korrektur hören')}
         </button>
@@ -130,6 +131,7 @@
   .text { display: flex; flex-direction: column; }
   .name { font-weight: 600; }
   .ab { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+  .block { display: block; margin-top: 2px; }
   .ab .btn[aria-pressed="true"] { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
   .notice { margin-top: 12px; }
   .link-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; min-height: 56px; color: inherit; text-decoration: none; font-weight: 600; }

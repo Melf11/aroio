@@ -185,6 +185,28 @@ def headroom_db(peq, rate=48000):
     return round(-max(0.0, peak), 1)
 
 
+def loudness_db(preset, rate=48000, fir_dir="/data/filters"):
+    """Level of the preset as heard with music: the filter response (plus pre-gain and
+    trims) averaged as power over 50 Hz-12 kHz with equal weight per octave (pink, like
+    music's spectrum). The A/B comparison plays "without correction" at this level, so
+    the two differ in sound only, not in loudness (louder simply sounds "better")."""
+    freqs = log_freqs(200, 50.0, 12000.0)
+    kind, per_ch = preset.get("kind"), []
+    for ch in ("L", "R"):
+        if kind == "peq":
+            r = np.asarray(biquad_response_db((preset.get("peq") or {}).get(ch, []), freqs, rate), dtype=float)
+        elif kind == "fir":
+            name = ((preset.get("fir") or {}).get(str(rate)) or {}).get(ch)
+            path = Path(fir_dir) / name if name else None
+            r = (np.asarray(fir_response_db(np.fromfile(path, dtype="<f8"), freqs, rate))
+                 if path and path.exists() else np.zeros(len(freqs)))
+        else:
+            r = np.zeros(len(freqs))
+        r = r + float(preset.get("gain_db", 0.0)) + float((preset.get("trim_db") or {}).get(ch, 0.0))
+        per_ch.append(10 * np.log10(np.mean(10 ** (r / 10))))
+    return round(float(10 * np.log10(np.mean(10 ** (np.asarray(per_ch) / 10)))), 1)
+
+
 # ── FIR files (Acourate .dbl = raw FLOAT64LE, or WAV) ─────────────────────────
 
 class FilterFileError(ValueError):

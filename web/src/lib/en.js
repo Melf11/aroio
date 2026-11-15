@@ -672,6 +672,8 @@ export default {
   'Eigener Equalizer': 'Own equalizer',
   'Ohne Messmikrofon: Bass, Mitten und Höhen nach Gehör einstellen. Wer mag, fügt weitere Filter hinzu.': 'No measuring microphone needed: set bass, mids and treble by ear. Add more filters if you like.',
   'Equalizer anlegen': 'Create equalizer',
+  'Beide Varianten spielen gleich laut, damit du nur den Klang vergleichst.': 'Both play at the same loudness, so you only compare the sound.',
+  'Ohne Korrektur jetzt {g} leiser.': 'Without correction now {g} quieter.',
   'Filter {n}: {s}': 'Filter {n}: {s}',
   'Punkte in der Kurve ziehen: links/rechts ändert die Frequenz, hoch/runter den Pegel, mit ⌘ oder Strg die Güte. Doppelklick in die Kurve legt einen Filter an, Doppelklick auf einen Punkt löscht ihn. Mit der Tastatur: Pfeiltasten, Entf löscht.': 'Drag the points in the chart: left/right changes the frequency, up/down the level, with ⌘ or Ctrl the Q. Double-click the chart to add a filter, double-click a point to remove it. Keyboard: arrow keys, Delete removes.',
   'Weiter geht es in der App auf dem Zuspieler.': 'Continue in the app on the playing device.',
