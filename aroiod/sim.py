@@ -272,7 +272,7 @@ class SimWorld:
         return round(min(100.0, (base + fir) / cores), 1)
 
     # ── sources ──
-    def pause_source(self, sid):
+    def pause_source(self, sid, user=False):
         self.log(f"{sid}: angehalten")
 
     def resume_source(self, sid):

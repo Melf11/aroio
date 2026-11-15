@@ -505,19 +505,27 @@ class RealWorld:
         self._spawn(self.camilla.set_volume(db))
 
     # ── sources ──
-    def pause_source(self, sid):
+    def pause_source(self, sid, user=False):
         """The previous source must let go of the loopback (all players write to
         Loopback,0,0, CamillaDSP reads its other end): pause it where the protocol
-        can, otherwise end its session by restarting the player."""
-        log.info("pause %s", sid)
-        self._spawn(self._pause_source(sid))
+        can, otherwise end its session by restarting the player.
+        user=True: pause pressed in the app; AirPlay and Bluetooth pause on the sender
+        and stay connected (nothing else wants the loopback)."""
+        log.info("pause %s%s", sid, " (app)" if user else "")
+        self._spawn(self._pause_source(sid, user))
 
-    async def _pause_source(self, sid):
+    async def _pause_source(self, sid, user=False):
         if sid == "bluetooth":
             await self.bt_watch.pause()                      # phone pauses (AVRCP)
+            if user:
+                return
             await asyncio.sleep(0.5)
             await _run("systemctl", "restart", "bluealsa-aplay.service")
         elif sid == "airplay":
+            if await self.airplay.command("pause"):
+                if user:
+                    return
+                await asyncio.sleep(0.5)
             await _run("systemctl", "restart", "shairport-sync.service")   # ends the AirPlay session
         elif sid == "spotify":
             await _run("systemctl", "restart", "aroio-spotify.service")
@@ -530,10 +538,25 @@ class RealWorld:
             await _run("systemctl", "kill", "--kill-whom=main", "-s", "SIGUSR1", "aroio-netjack.service")
 
     def resume_source(self, sid):
-        log.info("resume %s (source control: phase 1)", sid)
+        log.info("resume %s", sid)
+        self._spawn(self._source_command(sid, "play"))
 
     def source_command(self, sid, cmd):
-        log.info("%s: %s (source control: phase 1)", sid, cmd)
+        log.info("%s: %s", sid, cmd)
+        self._spawn(self._source_command(sid, cmd))
+
+    async def _source_command(self, sid, cmd):
+        """play / next / previous on the sender (AirPlay: DACP, Bluetooth: AVRCP, UPnP: mpd)."""
+        if sid == "airplay":
+            ok = await self.airplay.command({"play": "play", "next": "nextitem", "previous": "previtem"}[cmd])
+        elif sid == "bluetooth":
+            ok = await self.bt_watch.command(cmd)
+        elif sid == "upnp":
+            ok = await _mpd({"play": "pause 0", "next": "next", "previous": "previous"}[cmd])
+        else:
+            ok = False
+        if not ok:
+            self.device.hub.notice(f"{cmd_text(cmd)} geht bei dieser Quelle nur am Zuspieler.", key="source_control")
 
     def lms_play(self, meta):
         pass
@@ -1071,10 +1094,16 @@ async def _mpd(command):
         await reader.readline()
         writer.write(command.encode() + b"\n")
         await writer.drain()
-        await asyncio.wait_for(reader.readline(), 2)
+        reply = await asyncio.wait_for(reader.readline(), 2)
         writer.close()
+        return reply.startswith(b"OK")
     except (OSError, asyncio.TimeoutError) as exc:
         log.debug("mpd %s: %s", command, exc)
+        return False
+
+
+def cmd_text(cmd):
+    return {"play": "Weiterspielen", "next": "Weiterschalten", "previous": "Zurückschalten"}.get(cmd, cmd)
 
 
 async def _run(*cmd):

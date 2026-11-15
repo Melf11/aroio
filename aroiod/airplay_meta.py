@@ -10,8 +10,13 @@ type/code are 4 ASCII characters in hex: "core" items carry DAAP fields
 (minm title, asar artist, asal album, astm duration in ms), "ssnc" items come
 from shairport itself (PICT cover, prgr progress, pbeg/pend play begin/end,
 pfls/prsm pause/resume, snam name of the sending device, mden end of a
-metadata block). Parsing is pure and testable; the pipe reader lives in
-AirplayMeta.
+metadata block, daid/acre/clip what the Aroio needs to remote-control the sender).
+Parsing is pure and testable; the pipe reader lives in AirplayMeta.
+
+Remote control (DACP): the sender (iPhone, Mac) announces iTunes_Ctrl_<daid> as
+_dacp._tcp over mDNS; GET /ctrl-int/1/<command> with the header Active-Remote: <acre>
+plays, pauses or skips there. That keeps the AirPlay session, unlike restarting
+shairport-sync.
 """
 
 import asyncio
@@ -68,6 +73,7 @@ class Track:
         self.cover = None              # (content type, bytes)
         self.controller = None
         self.volume = None
+        self.remote = {}               # daid, acre, clip: remote control of the sender
 
     def feed(self, typ, code, data):
         """Returns an event: "meta" (new values to show), "start", "stop", "pause", "resume" or None."""
@@ -111,6 +117,9 @@ class Track:
         if code == "snam":
             self.controller = text() or None
             return None
+        if code in ("daid", "acre", "clip"):
+            self.remote[code] = text()
+            return None
         return {"pbeg": "start", "pend": "stop", "pfls": "pause", "prsm": "resume"}.get(code)
 
     def cover_id(self):
@@ -137,6 +146,7 @@ class AirplayMeta:
         self.track = Track()
         self._buf = b""
         self._pending = None
+        self._dacp = {}                # daid -> (host, port)
 
     def start(self):
         asyncio.ensure_future(self._run())
@@ -189,10 +199,18 @@ class AirplayMeta:
         d = self.device
         if event == "start":
             self.track.position = None
+            log.info("AirPlay from %s, remote control: %s", self.track.controller,
+                     "yes" if self.track.remote.get("acre") else "no")
             d.source_started("airplay", self.track.meta(), rate=44100)
         elif event == "stop":
             d.source_stopped("airplay")
+            remote = self.track.remote
             self.track.reset()
+            self.track.remote = remote        # the sender stays connected (pause): keep its remote
+        elif event == "pause":
+            d.source_paused("airplay")
+        elif event == "resume":
+            d.source_resumed("airplay")
         elif event == "volume":
             if d.source == "airplay" and self.track.volume is not None:
                 d.remote_volume(self.track.volume)
@@ -209,6 +227,60 @@ class AirplayMeta:
 
     def cover(self):
         return self.track.cover
+
+    # ── remote control ──
+    async def command(self, cmd):
+        """DACP command to the sender: play, pause, playpause, nextitem, previtem. True if sent."""
+        r = self.track.remote
+        if not r.get("daid") or not r.get("acre"):
+            log.info("AirPlay: sender has no remote control (%s)", cmd)
+            return False
+        target = self._dacp.get(r["daid"]) or await self._resolve(r["daid"], r.get("clip"))
+        if not target:
+            log.info("AirPlay: iTunes_Ctrl_%s not found", r["daid"])
+            return False
+        self._dacp[r["daid"]] = target
+        host, port = target
+        url = f"http://{'[' + host + ']' if ':' in host else host}:{port}/ctrl-int/1/{cmd}"
+        import aiohttp
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as s:
+                async with s.get(url, headers={"Active-Remote": r["acre"]}) as resp:
+                    ok = resp.status in (200, 204)
+        except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as exc:
+            log.info("AirPlay %s: %s", cmd, exc)
+            self._dacp.pop(r["daid"], None)          # port may have changed: look again next time
+            return False
+        if not ok:
+            log.info("AirPlay %s: HTTP %s", cmd, resp.status)
+        return ok
+
+    async def _resolve(self, daid, clip):
+        proc = await asyncio.create_subprocess_exec(
+            "avahi-browse", "-rpt", "_dacp._tcp", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        try:
+            out, _ = await asyncio.wait_for(proc.communicate(), 5)
+        except asyncio.TimeoutError:
+            proc.kill()
+            return None
+        return pick_dacp(out.decode(errors="replace"), daid, clip)
+
+
+def pick_dacp(browse, daid, clip=None):
+    """avahi-browse -rpt output -> (address, port) of iTunes_Ctrl_<daid>; the sender's own
+    address (clip) first, then IPv4, then the rest (IPv6 link-local needs no zone here)."""
+    found = []
+    for line in browse.splitlines():
+        f = line.split(";")
+        if len(f) >= 9 and f[0] == "=" and f[3].upper() == f"ITUNES_CTRL_{daid}".upper() and f[8].isdigit():
+            addr = f[7]
+            if addr.startswith("fe80"):
+                addr = f"{addr}%{f[1]}"
+            found.append((addr != clip, f[2] != "IPv4", addr, int(f[8])))
+    if not found:
+        return None
+    _, _, addr, port = min(found)
+    return addr, port
 
 
 def _loop_running():

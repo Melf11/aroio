@@ -202,6 +202,60 @@ async def test_airplay_metadata(client, device):
     assert (await state(client))["player"]["state"] == "stopped"
 
 
+def test_dacp_lookup():
+    from aroiod.airplay_meta import pick_dacp
+    browse = ("+;wlan0;IPv4;iTunes_Ctrl_ABCDEF0123456789;_dacp._tcp;local\n"
+              "=;wlan0;IPv6;iTunes_Ctrl_ABCDEF0123456789;_dacp._tcp;local;iPhone.local;fe80::1;50123;\n"
+              "=;wlan0;IPv4;iTunes_Ctrl_ABCDEF0123456789;_dacp._tcp;local;iPhone.local;192.168.1.50;50123;\n"
+              "=;wlan0;IPv4;iTunes_Ctrl_1111111111111111;_dacp._tcp;local;Mac.local;192.168.1.60;50999;\n")
+    assert pick_dacp(browse, "ABCDEF0123456789") == ("192.168.1.50", 50123)          # IPv4 before link-local
+    assert pick_dacp(browse, "ABCDEF0123456789", clip="fe80::1%wlan0") == ("fe80::1%wlan0", 50123)
+    assert pick_dacp(browse, "2222222222222222") is None
+
+
+async def test_airplay_remote_control_keeps_session(client, device):
+    """Pause/next in the app go to the iPhone (DACP) instead of ending the AirPlay session."""
+    from aiohttp import web
+    from aroiod.airplay_meta import AirplayMeta
+    got = []
+
+    async def ctrl(request):
+        got.append((request.match_info["cmd"], request.headers.get("Active-Remote")))
+        return web.Response(status=204)
+    app = web.Application()
+    app.router.add_get("/ctrl-int/1/{cmd}", ctrl)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = site._server.sockets[0].getsockname()[1]
+    try:
+        a = AirplayMeta(device, path="/nonexistent")
+        assert not await a.command("pause")                       # no session yet
+        a.handle_bytes(_item("ssnc", "daid", b"ABCDEF0123456789") + _item("ssnc", "acre", b"1234567")
+                       + _item("ssnc", "clip", b"127.0.0.1") + _item("ssnc", "pbeg"))
+        a._dacp["ABCDEF0123456789"] = ("127.0.0.1", port)
+        assert await a.command("nextitem") and got[-1] == ("nextitem", "1234567")
+        a.handle_bytes(_item("ssnc", "pend"))                     # pause ends the play block, not the session
+        assert await a.command("play") and got[-1][0] == "play"
+    finally:
+        await runner.cleanup()
+
+
+async def test_pause_from_app_keeps_sender_and_sender_pause_shows(client, device):
+    calls = []
+    device.world.pause_source = lambda sid, user=False: calls.append((sid, user))
+    device.source_started("airplay", {"title": "x", "format": {"rate": 44100}})
+    device.pause()
+    assert calls == [("airplay", True)]
+    device.source_resumed("airplay")                              # iPhone plays again
+    assert (await state(client))["player"]["state"] == "playing"
+    device.source_paused("airplay")                               # iPhone paused
+    assert (await state(client))["player"]["state"] == "paused"
+    device.source_started("bluetooth", {"title": "y", "format": {"rate": 44100}})
+    assert calls[-1] == ("airplay", False)                        # switching still lets go of the loopback
+
+
 def test_bluetooth_parsers():
     from aroiod import bt_watch as bw
     pcms = "/org/bluealsa/hci0/dev_AA_BB_CC_DD_EE_FF/a2dpsnk/source\n/org/bluealsa/hci0/dev_AA_BB_CC_DD_EE_FF/a2dpsrc/sink\n"

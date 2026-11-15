@@ -89,6 +89,7 @@ class BluetoothWatch:
         self.meta_key = None
         self.suppressed = False   # paused for another source: ignore until the stream stops once
         self.volume = None        # last volume the phone set (percent)
+        self.address = None       # last phone that played: play/next/previous go there
 
     def start(self):
         asyncio.ensure_future(self._run())
@@ -121,6 +122,7 @@ class BluetoothWatch:
             key = json.dumps(meta, sort_keys=True)
             if self.active != (path, addr) or d.source != "bluetooth":
                 self.active = (path, addr)
+                self.address = addr
                 self.meta_key = key
                 d.source_started("bluetooth", meta, rate=meta["format"]["rate"])
             elif key != self.meta_key:
@@ -159,6 +161,18 @@ class BluetoothWatch:
                 "duration": track.get("duration", 0), "image": None, "provider": "bluetooth",
                 "controller": name or addr, "live": not track.get("duration"),
                 "format": {"codec": (codec or "SBC").upper(), "bits": 16, "rate": rate or 44100}}
+
+    async def command(self, cmd):
+        """AVRCP play / next / previous on the phone that played last. True if sent."""
+        if not self.address:
+            return False
+        method = {"play": "Play", "next": "Next", "previous": "Previous", "pause": "Pause"}[cmd]
+        dev_path = f"/org/bluez/hci0/dev_{self.address.replace(':', '_')}"
+        for player in ("player0", "player1"):
+            if await _ok("busctl", "call", "org.bluez", f"{dev_path}/{player}", "org.bluez.MediaPlayer1", method):
+                return True
+        # phones without a media player object: the older MediaControl1
+        return await _ok("busctl", "call", "org.bluez", dev_path, "org.bluez.MediaControl1", method)
 
     async def pause(self):
         """AVRCP pause on the phone (another source started)."""

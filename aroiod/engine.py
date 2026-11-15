@@ -386,6 +386,21 @@ class Device:
             self.publish_player()
             self.publish_sources()
 
+    def source_paused(self, sid):
+        """The sender paused (iPhone, phone): show it, the session stays."""
+        if self.source == sid and self.state == "playing":
+            self._freeze()
+            self.state = "paused"
+            self.publish_player()
+            self.publish_sources()
+
+    def source_resumed(self, sid):
+        if self.source == sid and self.state != "playing":
+            self.state = "playing"
+            self.started_at = time.monotonic()
+            self.publish_player()
+            self.publish_sources()
+
     def external_meta(self, sid, meta):
         self.source_meta[sid] = meta
         if self.source == sid:
@@ -484,7 +499,7 @@ class Device:
         self._freeze()
         self.state = "paused"
         if self.source != "lms":
-            self.world.pause_source(self.source)
+            self.world.pause_source(self.source, user=True)   # keep the session (AirPlay, Bluetooth)
         self.publish_player()
         self.publish_sources()
 
