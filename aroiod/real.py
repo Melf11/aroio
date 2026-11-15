@@ -538,12 +538,12 @@ class RealWorld:
             await _run("systemctl", "kill", "--kill-whom=main", "-s", "SIGUSR1", "aroio-netjack.service")
 
     def source_controls(self, sid):
-        """What works on the device: AirPlay only with the sender's remote control (an iPhone
-        with AirPlay 2 gives none: then only ending the session), Spotify Connect has no
+        """What works on the device: AirPlay with Shairport Sync's remote control (5.6, D-Bus)
+        or the sender's DACP, otherwise only ending the session; Spotify Connect has no
         remote interface in librespot (ending only), Bluetooth AVRCP and UPnP (mpd) can do all."""
         if sid == "airplay":
-            remote = self.airplay.track.remote if getattr(self, "airplay", None) else {}
-            return {"play", "pause", "next", "previous"} if remote.get("acre") else {"stop"}
+            ap = getattr(self, "airplay", None)
+            return {"play", "pause", "next", "previous"} if ap and ap.can_control() else {"stop"}
         if sid in ("bluetooth", "upnp"):
             return {"play", "pause", "next", "previous"}
         if sid in ("spotify", "netjack"):

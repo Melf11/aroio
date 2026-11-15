@@ -12,7 +12,7 @@
 #          AROIO_RAUC_KEY=/path/key.pem      release signing key (CI); the certificate is in the repo
 #          AROIO_BUILD_VOLUME=aroio-build    Docker volume or absolute host directory for the Buildroot output
 
-BR_VERSION ?= 2026.02.3
+BR_VERSION ?= 2026.08.1
 BR_DIR ?= $(CURDIR)/buildroot
 OUT ?= $(CURDIR)/output/build
 BR2_DL_DIR ?= $(CURDIR)/output/dl
@@ -37,8 +37,20 @@ e2e: web
 web:
 	cd web && npm ci --no-audit --no-fund && npx vite build
 
+# Buildroot plus br2-external/buildroot-patches (version bumps of Buildroot packages that
+# are behind upstream). Another version or other patches: fetch it again; another
+# Buildroot version also starts the output from scratch (new toolchain).
+BR_PATCHES = $(sort $(wildcard $(CURDIR)/br2-external/buildroot-patches/*.patch))
+BR_STAMP = $(BR_VERSION) $(shell cat $(BR_PATCHES) /dev/null | cksum | cut -d' ' -f1)
 buildroot:
-	test -d $(BR_DIR) || git clone --depth 1 --branch $(BR_VERSION) https://gitlab.com/buildroot.org/buildroot.git $(BR_DIR)
+	@if [ -d $(BR_DIR) ] && [ "$$(cat $(BR_DIR)/.aroio-stamp 2>/dev/null)" != "$(BR_STAMP)" ]; then \
+		if [ "$$(cut -d' ' -f1 $(BR_DIR)/.aroio-stamp 2>/dev/null)" != "$(BR_VERSION)" ]; then \
+			echo "Buildroot $(BR_VERSION): neuer Build von Grund auf"; rm -rf $(OUT); fi; \
+		rm -rf $(BR_DIR); fi
+	@if [ ! -d $(BR_DIR) ]; then \
+		git clone -q --depth 1 --branch $(BR_VERSION) https://gitlab.com/buildroot.org/buildroot.git $(BR_DIR) && \
+		for p in $(BR_PATCHES); do echo "Buildroot-Patch $$(basename $$p)"; git -C $(BR_DIR) apply $$p || exit 1; done && \
+		echo "$(BR_STAMP)" > $(BR_DIR)/.aroio-stamp; fi
 
 image: buildroot
 	test -f web/dist/index.html || { echo "web/dist fehlt: zuerst 'make web'"; exit 1; }

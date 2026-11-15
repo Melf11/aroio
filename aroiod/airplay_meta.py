@@ -13,7 +13,11 @@ pfls/prsm pause/resume, snam name of the sending device, mden end of a
 metadata block, daid/acre/clip what the Aroio needs to remote-control the sender).
 Parsing is pure and testable; the pipe reader lives in AirplayMeta.
 
-Remote control (DACP): the sender (iPhone, Mac) announces iTunes_Ctrl_<daid> as
+Remote control: Shairport Sync 5.6 controls AirPlay 2 senders through its D-Bus
+interface (org.gnome.ShairportSync.RemoteControl: Play, Pause, Next, Previous); its
+"Available" property stays false in AirPlay 2 although the commands work, so aroiod
+uses it whenever the bus name exists. Older senders (classic AirPlay) also work over
+DACP: the sender (iPhone, Mac) announces iTunes_Ctrl_<daid> as
 _dacp._tcp over mDNS; GET /ctrl-int/1/<command> with the header Active-Remote: <acre>
 plays, pauses or skips there. That keeps the AirPlay session, unlike restarting
 shairport-sync.
@@ -147,9 +151,11 @@ class AirplayMeta:
         self._buf = b""
         self._pending = None
         self._dacp = {}                # daid -> (host, port)
+        self.dbus = False              # Shairport Sync D-Bus remote control seen
 
     def start(self):
         asyncio.ensure_future(self._run())
+        asyncio.ensure_future(self.probe_dbus())
 
     async def _run(self):
         while True:
@@ -199,8 +205,10 @@ class AirplayMeta:
         d = self.device
         if event == "start":
             self.track.position = None
-            log.info("AirPlay from %s, remote control: %s", self.track.controller,
+            log.info("AirPlay from %s, DACP: %s", self.track.controller,
                      "yes" if self.track.remote.get("acre") else "no")
+            if _loop_running():
+                asyncio.ensure_future(self._probe_and_publish())
             d.source_started("airplay", self.track.meta(), rate=44100)
         elif event == "stop":
             d.source_stopped("airplay")
@@ -221,6 +229,12 @@ class AirplayMeta:
             elif self._pending is None:
                 self._pending = asyncio.get_running_loop().call_later(0.15, self._send)
 
+    async def _probe_and_publish(self):
+        before = self.dbus
+        await self.probe_dbus()
+        if self.dbus != before:
+            self.device.publish_player()          # the buttons depend on it
+
     def _send(self):
         self._pending = None
         self.device.external_meta("airplay", self.track.meta())
@@ -229,8 +243,31 @@ class AirplayMeta:
         return self.track.cover
 
     # ── remote control ──
+    DBUS = ("org.gnome.ShairportSync", "/org/gnome/ShairportSync", "org.gnome.ShairportSync.RemoteControl")
+    DBUS_METHODS = {"play": "Play", "pause": "Pause", "playpause": "PlayPause", "nextitem": "Next", "previtem": "Previous"}
+
+    def can_control(self):
+        return bool(self.dbus or self.track.remote.get("acre"))
+
+    async def probe_dbus(self):
+        """Is Shairport Sync's D-Bus interface there (5.6 with --with-dbus-interface)?"""
+        ok, _ = await _exec("busctl", "--system", "status", self.DBUS[0])
+        if ok != self.dbus:
+            self.dbus = ok
+            log.info("AirPlay remote control over D-Bus: %s", "yes" if ok else "no")
+        return ok
+
     async def command(self, cmd):
-        """DACP command to the sender: play, pause, playpause, nextitem, previtem. True if sent."""
+        """Command to the sender: play, pause, playpause, nextitem, previtem. True if sent."""
+        if self.dbus or await self.probe_dbus():
+            ok, out = await _exec("busctl", "--system", "call", *self.DBUS, self.DBUS_METHODS[cmd])
+            if ok:
+                return True
+            log.info("AirPlay %s over D-Bus: %s", cmd, out.strip())
+        return await self._dacp_command(cmd)
+
+    async def _dacp_command(self, cmd):
+        """DACP to the sender (classic AirPlay)."""
         r = self.track.remote
         if not r.get("daid") or not r.get("acre"):
             log.info("AirPlay: sender has no remote control (%s)", cmd)
@@ -264,6 +301,15 @@ class AirplayMeta:
             proc.kill()
             return None
         return pick_dacp(out.decode(errors="replace"), daid, clip)
+
+
+async def _exec(*cmd):
+    try:
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), 4)
+    except (OSError, asyncio.TimeoutError) as exc:
+        return False, str(exc)
+    return proc.returncode == 0, out.decode(errors="replace")
 
 
 def pick_dacp(browse, daid, clip=None):

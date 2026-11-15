@@ -242,6 +242,23 @@ async def test_airplay_remote_control_keeps_session(client, device):
         await runner.cleanup()
 
 
+async def test_airplay2_remote_control_over_dbus(device, monkeypatch):
+    """Shairport Sync 5.6: Pause/Next go through its D-Bus interface (AirPlay 2)."""
+    from aroiod import airplay_meta as am
+    calls = []
+
+    async def fake_exec(*cmd):
+        calls.append(cmd)
+        return True, ""
+    monkeypatch.setattr(am, "_exec", fake_exec)
+    a = am.AirplayMeta(device, path="/nonexistent")
+    assert not a.can_control()
+    assert await a.command("pause")
+    assert a.can_control()
+    assert calls[-1][-1] == "Pause" and "org.gnome.ShairportSync.RemoteControl" in calls[-1]
+    assert await a.command("nextitem") and calls[-1][-1] == "Next"
+
+
 async def test_pause_from_app_keeps_sender_and_sender_pause_shows(client, device):
     calls = []
     device.world.pause_source = lambda sid, user=False: calls.append((sid, user))

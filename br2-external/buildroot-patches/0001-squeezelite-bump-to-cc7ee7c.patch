@@ -1,0 +1,23 @@
+diff --git a/package/squeezelite/squeezelite.hash b/package/squeezelite/squeezelite.hash
+index 62cbe025..876932c0 100644
+--- a/package/squeezelite/squeezelite.hash
++++ b/package/squeezelite/squeezelite.hash
+@@ -1,3 +1,3 @@
+ # Locally calculated
+-sha256  dae15fe640111895c99a3aa561a3448d3ce43ab695c2006828e621c51023b588  squeezelite-72e1fd8abfa9b2f8e9636f033247526920878718.tar.gz
+-sha256  6c9ecc7ee5e0a793b04669128191cf1f250b4e9dc6e1130aa050619b39ab71d0  LICENSE.txt
++sha256  67358a5e672344a16e40ea9cfe8add548867f5ff00a69a0f239fd8fe78f8417b  squeezelite-cc7ee7c0d00bd2aa691a574a7d429d5cd13c858b.tar.gz
++sha256  81b7a09f00156ebdc3ec23f80671a217e4b01425fab6583080b025c7a482ba93  LICENSE.txt
+diff --git a/package/squeezelite/squeezelite.mk b/package/squeezelite/squeezelite.mk
+index 40fc6df4..d5971924 100644
+--- a/package/squeezelite/squeezelite.mk
++++ b/package/squeezelite/squeezelite.mk
+@@ -4,7 +4,7 @@
+ #
+ ################################################################################
+ 
+-SQUEEZELITE_VERSION = 72e1fd8abfa9b2f8e9636f033247526920878718
++SQUEEZELITE_VERSION = cc7ee7c0d00bd2aa691a574a7d429d5cd13c858b
+ SQUEEZELITE_SITE = $(call github,ralph-irving,squeezelite,$(SQUEEZELITE_VERSION))
+ SQUEEZELITE_LICENSE = GPL-3.0
+ SQUEEZELITE_LICENSE_FILES = LICENSE.txt
