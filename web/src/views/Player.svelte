@@ -96,8 +96,10 @@
           <button class="play" type="button" onclick={() => act('pause')} aria-label={t('Pause')}><Pause size={34} fill="currentColor" aria-hidden="true" /></button>
         {:else if p.state === 'playing' && p.can?.stop}
           <button class="play" type="button" onclick={() => act('stop')} aria-label={t('Stopp')}><Square size={28} fill="currentColor" aria-hidden="true" /></button>
-        {:else if p.state !== 'playing' && p.can?.play}
-          <button class="play" type="button" onclick={() => act('play')} aria-label={t('Abspielen')}><Play size={34} fill="currentColor" aria-hidden="true" /></button>
+        {:else if p.state !== 'playing'}
+          <!-- greyed out when only the sender can start it again -->
+          <button class="play" type="button" disabled={!p.can?.play} onclick={() => act('play')} aria-label={t('Abspielen')}
+                  aria-describedby={p.can?.play ? undefined : 'control-hint'}><Play size={34} fill="currentColor" aria-hidden="true" /></button>
         {/if}
         {#if p.can?.next}
           <button class="icon-btn" type="button" onclick={() => act('next')} aria-label={t('Nächster Titel')}><SkipForward size={30} fill="currentColor" aria-hidden="true" /></button>
@@ -110,7 +112,7 @@
         {:else if p.can?.shuffle}<span class="slot side" aria-hidden="true"></span>{/if}
       </div>
       {#if p.state !== 'playing' && !p.can?.play && p.source !== 'lms'}
-        <p class="muted small control-hint">{t('Weiter geht es in der App auf dem Zuspieler.')}</p>
+        <p class="muted small control-hint" id="control-hint">{t('Weiter geht es in der App auf dem Zuspieler.')}</p>
       {/if}
 
       <div class="volume">
@@ -181,6 +183,7 @@
   .transport .slot { width: 56px; height: 56px; }
   .transport .slot.side { width: 48px; height: 48px; }
   .control-hint { text-align: center; margin: 0; }
+  .play:disabled { background: var(--surface-2, var(--border)); color: var(--text-2); box-shadow: none; cursor: default; }
   .play { width: 76px; height: 76px; border-radius: 50%; border: 0; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; box-shadow: 0 6px 20px rgb(0 170 170 / .35); }
   .play:active { transform: scale(.96); }
 

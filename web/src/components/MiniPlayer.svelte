@@ -27,8 +27,8 @@
       <button class="icon-btn" type="button" onclick={() => act('pause')} aria-label={t('Pause')}><Pause size={24} fill="currentColor" aria-hidden="true" /></button>
     {:else if p.state === 'playing' && p.can?.stop}
       <button class="icon-btn" type="button" onclick={() => act('stop')} aria-label={t('Stopp')}><Square size={20} fill="currentColor" aria-hidden="true" /></button>
-    {:else if p.state !== 'playing' && p.can?.play}
-      <button class="icon-btn" type="button" onclick={() => act('play')} aria-label={t('Abspielen')}><Play size={24} fill="currentColor" aria-hidden="true" /></button>
+    {:else if p.state !== 'playing'}
+      <button class="icon-btn" type="button" disabled={!p.can?.play} onclick={() => act('play')} aria-label={t('Abspielen')}><Play size={24} fill="currentColor" aria-hidden="true" /></button>
     {/if}
     {#if p.can?.next}
       <button class="icon-btn" type="button" onclick={() => act('next')} aria-label={t('Nächster Titel')}><SkipForward size={22} aria-hidden="true" /></button>
@@ -42,5 +42,6 @@
   .info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
   .text { display: flex; flex-direction: column; min-width: 0; }
   .title { font-weight: 600; }
+  .icon-btn:disabled { opacity: .35; cursor: default; }
   .sub { font-size: .8125rem; color: var(--text-2); }
 </style>

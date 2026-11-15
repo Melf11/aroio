@@ -281,6 +281,6 @@ test('NetJack einschalten, Rate wählen, Rechner spielt', async ({ page, request
   await expect(main.getByRole('button', { name: 'Pause' })).toHaveCount(0);
   await main.getByRole('button', { name: 'Stopp' }).click();
   await expect(page.getByText('Weiter geht es in der App auf dem Zuspieler.')).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Abspielen' })).toHaveCount(0);
+  await expect(main.getByRole('button', { name: 'Abspielen' })).toBeDisabled();   // only the sender starts it
   await axe(page, 'NetJack gestoppt');
 });
