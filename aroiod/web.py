@@ -359,6 +359,13 @@ async def preset_measurement(request):
     return ok(data)
 
 
+@routes.post(A + "/dsp/presets")
+async def preset_create(request):
+    """New own equalizer (no measuring microphone needed)."""
+    data = await body(request)
+    return ok(dev(request).create_eq((data or {}).get("name")))
+
+
 @routes.post(A + "/dsp/presets/{id}/activate")
 async def preset_activate(request):
     dev(request).patch_config({"dsp": {"active_preset": request.match_info["id"], "enabled": True}})

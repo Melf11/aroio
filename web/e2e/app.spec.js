@@ -154,6 +154,21 @@ test('Klangeinstellung von Hand bearbeiten', async ({ page, request }) => {
   await expect(page.getByRole('button', { name: 'Filter bearbeiten' })).toBeVisible();
 });
 
+test('Eigener Equalizer ohne Messmikrofon', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/klang');
+  await page.getByRole('button', { name: 'Equalizer anlegen' }).click();
+  await expect(page.getByRole('heading', { name: 'Eigener Equalizer', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Filter bearbeiten' })).toBeVisible();   // editor opens directly
+  await expect(page.getByText('Diese Einstellung ist gerade aktiv.')).toBeVisible();
+  await page.locator('summary', { hasText: 'Bass-Shelf' }).click();
+  await page.getByRole('spinbutton', { name: 'Pegel' }).first().fill('3');
+  await page.getByRole('spinbutton', { name: 'Pegel' }).first().blur();
+  const id = new URL(page.url()).pathname.split('/').pop();
+  await expect.poll(async () => (await (await api(request, '/dsp/presets/' + id, undefined, 'get')).json()).peq.R[0].gain).toBe(3);
+  await axe(page, 'eigener-equalizer');
+});
+
 test('WLAN-Einrichtung über den Hotspot (Captive Portal)', async ({ page, request }) => {
   test.setTimeout(90000);
   await fresh(request);

@@ -6,7 +6,7 @@
   import Dialog from '../components/Dialog.svelte';
   import { api } from '../lib/api.js';
   import { app, toast } from '../lib/state.svelte.js';
-  import { go } from '../lib/router.svelte.js';
+  import { go, route } from '../lib/router.svelte.js';
   import { db, rate } from '../lib/format.js';
   import { t } from '../lib/i18n.svelte.js';
   let { params } = $props();
@@ -38,7 +38,10 @@
       name = preset.name;
     } catch (e) { error = e.message; }
   }
-  $effect(() => { params.id; load(); });
+  $effect(() => { params.id; load().then(() => {
+    // new own equalizer: straight into the editor
+    if (route.query.get('bearbeiten') && preset?.kind === 'peq' && !editing) startEdit();
+  }); });
 
   // level and timing (expert): gain, per-channel trim and delay, for FIR and EQ alike
   let lv = $state(null);

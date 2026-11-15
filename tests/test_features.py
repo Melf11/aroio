@@ -21,6 +21,17 @@ async def state(client):
     return await (await client.get("/api/v1/state")).json()
 
 
+async def test_own_equalizer_without_microphone(client, device):
+    p = await post(client, "/dsp/presets", {})
+    assert p["kind"] == "peq" and p["origin"] == "user" and p["name"] == "Eigener Equalizer"
+    assert [f["type"] for f in p["peq"]["L"]] == ["lowshelf", "peaking", "highshelf"]
+    assert all(f["gain"] == 0 for f in p["peq"]["L"] + p["peq"]["R"])
+    s = await state(client)
+    assert s["dsp"]["active_preset"] == p["id"] and s["dsp"]["enabled"]
+    second = await post(client, "/dsp/presets", {})
+    assert second["name"] == "Eigener Equalizer 2"
+
+
 async def test_factory_filters(client, device):
     ids = {p["id"]: p for p in device.config.get("dsp.presets")}
     assert {"werk-bbcdip", "werk-echo"} <= set(ids)

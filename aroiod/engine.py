@@ -717,6 +717,24 @@ class Device:
         presets = [dict(p, name=name) if p["id"] == pid else p for p in self.config.data["dsp"]["presets"]]
         self.patch_config({"dsp": {"presets": presets}})
 
+    def create_eq(self, name=None):
+        """Own equalizer without a measurement: three neutral bands to start with
+        (bass shelf, mids, treble shelf), active at once so every change is audible."""
+        names = {p["name"] for p in self.config.data["dsp"]["presets"]}
+        if not name:
+            name, n = "Eigener Equalizer", 2
+            while name in names:
+                name, n = f"Eigener Equalizer {n}", n + 1
+        bands = [{"type": "lowshelf", "freq": 100.0, "gain": 0.0, "q": 0.7},
+                 {"type": "peaking", "freq": 1000.0, "gain": 0.0, "q": 1.0},
+                 {"type": "highshelf", "freq": 8000.0, "gain": 0.0, "q": 0.7}]
+        preset = {"id": "eq-" + uuid.uuid4().hex[:8], "name": name[:40], "kind": "peq", "origin": "user",
+                  "peq": {"L": [dict(b) for b in bands], "R": [dict(b) for b in bands]},
+                  "created": time.strftime("%Y-%m-%d")}
+        self.save_preset(preset, activate=True)
+        self.patch_config({"dsp": {"enabled": True}})
+        return preset
+
     def import_fir(self, name, files):
         """files: {(channel, rate): (filename, bytes)} -> new FIR preset."""
         pid = "fir-" + uuid.uuid4().hex[:8]

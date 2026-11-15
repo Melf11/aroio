@@ -1,11 +1,12 @@
 <script>
-  import { AudioWaveform, ChevronRight, Mic, Upload, BadgeCheck, Ear } from '@lucide/svelte';
+  import { AudioWaveform, ChevronRight, Mic, Upload, BadgeCheck, Ear, SlidersHorizontal } from '@lucide/svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Toggle from '../components/Toggle.svelte';
   import Segmented from '../components/Segmented.svelte';
   import { app, toast } from '../lib/state.svelte.js';
   import { api, config } from '../lib/api.js';
   import { rate } from '../lib/format.js';
+  import { go } from '../lib/router.svelte.js';
   import { t } from '../lib/i18n.svelte.js';
 
   const dsp = $derived(app.topics.dsp);
@@ -20,6 +21,14 @@
     try { await api.post(`/dsp/presets/${id}/activate`); toast(t('Klang: {name}', { name: dsp.presets.find((p) => p.id === id)?.name })); }
     catch (e) { toast(e.message, 'danger'); }
   };
+  // own equalizer without a measuring microphone: created, activated, editor opens
+  let creating = $state(false);
+  async function newEq() {
+    creating = true;
+    try { const p = await api.post('/dsp/presets', {}); go(`/klang/preset/${p.id}?bearbeiten=1`); }
+    catch (e) { toast(e.message, 'danger'); }
+    finally { creating = false; }
+  }
   const compare = async (on) => { try { await api.post('/dsp/compare', { bypass: on }); } catch (e) { toast(e.message, 'danger'); } };
 </script>
 
@@ -35,6 +44,16 @@
         </div>
       </div>
       <a class="btn primary" href="/klang/raumkorrektur">{rc?.active ? t('Messung fortsetzen') : hasRoom ? t('Neu einmessen') : t('Raum einmessen')}</a>
+    </section>
+
+    <section class="card room">
+      <div class="row"><span class="ic"><SlidersHorizontal size={22} aria-hidden="true" /></span>
+        <div class="grow">
+          <h2>{t('Eigener Equalizer')}</h2>
+          <p class="muted small">{t('Ohne Messmikrofon: Bass, Mitten und Höhen nach Gehör einstellen. Wer mag, fügt weitere Filter hinzu.')}</p>
+        </div>
+      </div>
+      <button class="btn" type="button" disabled={creating} onclick={newEq}>{t('Equalizer anlegen')}</button>
     </section>
 
     <fieldset class="presets" disabled={!dsp.enabled}>
@@ -97,6 +116,7 @@
 
 <style>
   .room { display: flex; flex-direction: column; gap: 14px; }
+  .room + .room { margin-top: 12px; }
   .room .row { align-items: flex-start; }
   .ic { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--brand-soft); color: var(--brand-soft-ink); flex: none; }
   .room h2 { margin-bottom: 4px; }
