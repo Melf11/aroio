@@ -48,6 +48,19 @@ done < "$BOARD_DIR/post-build-enable.txt"
 mkdir -p "$TARGET/etc/systemd/system/data.mount.wants"
 ln -sf /usr/lib/systemd/system/aroio-grow-data.service "$TARGET/etc/systemd/system/data.mount.wants/aroio-grow-data.service"
 
+# Boot files of this system inside its root file system: an update copies them to its
+# slot directory on the boot partition (rauc-tryboot), so the kernel is updated with the system.
+BOOTFILES="$TARGET/usr/share/aroio/boot"
+rm -rf "$BOOTFILES"
+mkdir -p "$BOOTFILES"
+cp "$BINARIES_DIR/Image" "$BOOTFILES/"
+for dtb in bcm2710-rpi-3-b bcm2710-rpi-3-b-plus bcm2710-rpi-2-b bcm2711-rpi-4-b bcm2711-rpi-400 bcm2711-rpi-cm4 \
+           bcm2712-rpi-5-b bcm2712-rpi-cm5-cm5io bcm2712d0-rpi-5-b; do
+    [ -f "$BINARIES_DIR/$dtb.dtb" ] && cp "$BINARIES_DIR/$dtb.dtb" "$BOOTFILES/"
+done
+cp -r "$BINARIES_DIR/rpi-firmware/overlays" "$BOOTFILES/"
+cp "$BINARIES_DIR/rpi-firmware/cmdline.txt" "$BOOTFILES/cmdline.txt.in"
+
 # RAUC: system.conf + keyring. Without a release certificate a development key is created
 # (only for development images; release builds pass AROIO_RAUC_CERT/AROIO_RAUC_KEY).
 cp "$BOARD_DIR/rauc/system.conf" "$TARGET/etc/rauc/system.conf"
@@ -58,4 +71,9 @@ if [ -z "${AROIO_RAUC_CERT:-}" ] && [ ! -f "$DEV/cert.pem" ]; then
     "$OPENSSL" req -x509 -newkey rsa:4096 -nodes -days 3650 -subj "/CN=AroioOS development" \
         -keyout "$DEV/key.pem" -out "$DEV/cert.pem" 2>/dev/null
 fi
-cp "${AROIO_RAUC_CERT:-$DEV/cert.pem}" "$TARGET/etc/rauc/keyring.pem"
+# Every image trusts the release certificate (updates from GitHub); development images
+# also trust their own development key (bundles from ./dev.sh deploy --bundle).
+cp "$BOARD_DIR/rauc/release-cert.pem" "$TARGET/etc/rauc/keyring.pem"
+if [ -z "${AROIO_RAUC_CERT:-}" ]; then
+    cat "$DEV/cert.pem" >> "$TARGET/etc/rauc/keyring.pem"
+fi

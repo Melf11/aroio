@@ -1,0 +1,12 @@
+#!/bin/sh
+# A slot booted for the first time after an update must get healthy (aroiod -> mark-good)
+# within 5 minutes, otherwise the Aroio goes back to the previous system.
+STATE=/data/rauc
+booted=$(sed -n 's/.*rauc\.slot=\([AB]\).*/\1/p' /proc/cmdline)
+[ -n "$booted" ] && [ "$(cat $STATE/trial 2>/dev/null)" = "$booted" ] || exit 0
+sleep 300
+if [ "$(cat $STATE/trial 2>/dev/null)" = "$booted" ]; then
+    echo "aroio-trial-watch: slot $booted not healthy, going back" >&2
+    /usr/lib/aroio/rauc-tryboot revert
+    systemctl reboot
+fi

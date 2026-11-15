@@ -712,7 +712,7 @@ async def internal_source(request):
         raise web.HTTPForbidden()
     d, data = dev(request), await body(request)
     sid, event = data.get("source"), data.get("event")
-    if sid not in ("lms", "spotify", "airplay", "upnp", "bluetooth", "input", "roon"):
+    if sid not in ("lms", "spotify", "airplay", "upnp", "bluetooth", "input", "roon", "netjack"):
         raise ValueError("Unbekannte Quelle")
     meta = data.get("meta") or d.source_meta.get(sid) or {
         "title": SOURCES[sid]["name"], "artist": "", "album": "", "duration": 0, "live": True,

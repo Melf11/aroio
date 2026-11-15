@@ -1,0 +1,13 @@
+[Unit]
+Description=NetJack (JACK over the network, Aroio is the master)
+After=network.target aroiod.service
+
+[Service]
+# started/stopped by aroiod according to sources.netjack.enabled (off by default)
+EnvironmentFile=-/data/aroio/netjack.env
+ExecStart=/usr/lib/aroio/aroio-python -m aroiod.netjack
+Environment=JACK_NO_AUDIO_RESERVATION=1
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+Restart=on-failure
+RestartSec=3

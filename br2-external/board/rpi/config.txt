@@ -1,6 +1,9 @@
 # AroioOS. Model-specific overlays live in aroio.txt (written from board/rpi/profiles/ at build time,
 # later by aroiod after model detection).
+# os_prefix selects the system slot (A/B): kernel, device trees, overlays and cmdline.txt come
+# from slot-a/ or slot-b/. Only /usr/lib/aroio/rauc-tryboot changes this line.
 [all]
+os_prefix=slot-a/
 arm_64bit=1
 kernel=Image
 disable_splash=1

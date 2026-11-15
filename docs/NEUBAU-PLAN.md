@@ -431,7 +431,7 @@ die Funktionsliste in Abschnitt 2 war also vollständig. Noch fehlend oder nur t
 | Infoscreen, Display-Drehung | erledigt: `aroio-infoscreen` auf tty1 (Terminus 16×32) |
 | IR-Fernbedienung, Drehgeber, Pause-Taste | erledigt: rc-core + evdev (`inputs.py`), Aroio-Fernbedienung (RC5) vorbelegt, Anlernen in der App |
 | Spotify | erledigt: librespot 0.8.0 (Zeroconf, Titel/Cover/Lautstärke über `spotify-event`); Soloist bleibt offen |
-| NetJack | **offene Entscheidung**: im Neubau nicht enthalten. Line In vorhanden |
+| NetJack | erledigt (15.11.2026): abschaltbare Quelle, Aroio ist NetJack-Master wie in 5.1 (`aroio-netjack`), Rate im Expertenmodus |
 
 **Größe:** 5.1 ist 170 MB (FAT mit 81-MB-zImage, System komplett im RAM). Unser Image ist 1,27 GB, davon
 sind die Partitionen A/B je 512 MB und Daten 64 MB großteils leer; das System selbst ist ein 134-MB-squashfs,
@@ -453,6 +453,14 @@ ohne Mixer ab (`--volume=none`), wurde vor BlueALSA gestartet und meldete nichts
 (`bt_watch.py`). AirPlay-Titel/Cover/Lautstärke über die Metadaten-Pipe (`airplay_meta.py`). SSH-Hostschlüssel
 lagen im RAM (bei jedem Boot neu) und liegen jetzt auf `/data/dropbear`. squeezelite hatte keine Unit.
 
-**Offen:** RAUC aktualisiert nur das Root-Dateisystem; Kernel und Device-Tree liegen auf der gemeinsamen
-Boot-Partition. Ein Update mit neuem Kernel braucht A/B-Bootdateien (tryboot) – vor dem ersten
-Kernel-Update lösen.
+**Updates (15.11.2026):** Kernel, Device-Trees, Overlays und `cmdline.txt` liegen je Slot auf der
+Boot-Partition (`slot-a/`, `slot-b/`, `os_prefix`), ein Update bringt sie aus seinem Root-Dateisystem mit.
+Pi 4/5 probieren den neuen Slot einmal (`tryboot`), Pi 3 schaltet direkt und fällt über `aroio-trial-watch`
+zurück, wenn aroiod nicht hochkommt (gegen einen Kernel, der nie startet, hilft auf dem Pi 3 nur die SD-Karte).
+Firmware-Dateien (`start*.elf`) werden nicht per Update erneuert. Releases baut GitHub Actions bei Tags `v*`,
+Geräte holen sie von GitHub. Entwicklung ohne Neu-Flashen: `./dev.sh deploy`.
+Noch offen (später): Umstieg alter 5.1-Geräte. Der alte Updater lädt per HTTP (kein HTTPS) `latest` und
+`aroio-X.Y.Z.img.xz` vom ABACUS-Server, schreibt das Image mit `dd` und kopiert danach die alte `config.txt`
+(`kernel=zImage`, 32 Bit) zurück. Plan: Übergangs-Image mit kleinem 32-Bit-„Umzugs-Kernel“ als `zImage`, der die
+alte Konfiguration für die Migration sichert, unsere `config.txt` schreibt und neu startet; größere Boot-Partition
+für alte Filter.

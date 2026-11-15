@@ -1,3 +1,4 @@
 #!/bin/sh
-# Marks the running slot as good once aroiod answers (phase 1, together with rauc-tryboot).
+# aroiod is up: the running slot is good (makes a trial slot permanent, see rauc-tryboot).
+rauc status mark-good booted >/dev/null 2>&1 || true
 exit 0

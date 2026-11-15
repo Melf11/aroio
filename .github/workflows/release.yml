@@ -1,0 +1,132 @@
+# Release: a tag vX.Y.Z (stable) or vX.Y.Z-beta.N / -rc.N (pre-release = beta channel) builds the
+# system and publishes SD card images and the signed RAUC bundle as a GitHub release.
+# Aroios look for new releases here (aroiod/updates.py).
+#
+# Runner: GitHub-hosted by default (first build several hours). A self-hosted runner keeps the
+# Buildroot output between builds (minutes): set the repository variable AROIO_RUNNER to its
+# label as JSON, e.g. ["self-hosted","aroio"]. It needs Docker.
+# Secret RAUC_KEY: the release signing key (PEM); its certificate is
+# br2-external/board/rpi/rauc/release-cert.pem.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version ohne v (z. B. 0.2.0-beta.1). Leer = Testbuild ohne Release."
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ${{ fromJSON(vars.AROIO_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 355   # GitHub-hosted maximum is 6 h
+    env:
+      SELF_HOSTED: ${{ vars.AROIO_RUNNER != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = tag ]; then V="${GITHUB_REF_NAME#v}"; else V="${{ inputs.version }}"; fi
+          if [ -n "$V" ] && ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::Version '$V' ist kein x.y.z[-beta.n]"; exit 1
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "build=${V:-ci-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
+          case "$V" in *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT";; *) echo "prerelease=false" >> "$GITHUB_OUTPUT";; esac
+
+      - uses: actions/setup-node@v4
+        if: env.SELF_HOSTED != 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # GitHub-hosted: Buildroot output on the large /mnt disk, downloads cached between builds
+      - name: Build-Verzeichnis
+        id: dir
+        run: |
+          if [ "$SELF_HOSTED" = true ]; then
+            echo "volume=aroio-build" >> "$GITHUB_OUTPUT"
+          else
+            sudo mkdir -p /mnt/aroio-build/dl && sudo chown -R "$USER" /mnt/aroio-build
+            echo "volume=/mnt/aroio-build" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/cache@v4
+        if: env.SELF_HOSTED != 'true'
+        with:
+          path: /mnt/aroio-build/dl
+          key: buildroot-dl-${{ hashFiles('br2-external/configs/*', 'br2-external/package/**/*.mk', 'br2-external/package/**/*.hash', 'Makefile') }}
+          restore-keys: buildroot-dl-
+
+      - name: Signierschlüssel
+        env:
+          RAUC_KEY: ${{ secrets.RAUC_KEY }}
+        run: |
+          if [ -z "$RAUC_KEY" ]; then echo "::error::Secret RAUC_KEY fehlt"; exit 1; fi
+          umask 077
+          printf '%s\n' "$RAUC_KEY" > "$RUNNER_TEMP/rauc-key.pem"
+
+      - name: Image bauen
+        run: |
+          make docker-image AROIO_VERSION=${{ steps.v.outputs.build }} AROIO_PROFILE=aroio \
+            AROIO_PROFILES="iqaudio generic" AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }} \
+            AROIO_RAUC_KEY="$RUNNER_TEMP/rauc-key.pem" AROIO_SSH_PUBKEY=
+
+      - name: Selbsttest
+        run: make selftest AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }}
+
+      - name: Schlüssel löschen
+        if: always()
+        run: rm -f "$RUNNER_TEMP/rauc-key.pem"
+
+      - name: Dateien
+        run: |
+          cd output
+          mv aroio-sdcard.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-aroio.img.xz
+          for p in iqaudio generic; do mv aroio-sdcard-$p.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-$p.img.xz; done
+          rm -f aroio-sdcard.img
+          sha256sum aroio-*.img.xz aroio-*.raucb > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Release
+        if: steps.v.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=${{ steps.v.outputs.version }}
+          git fetch --tags --force >/dev/null 2>&1 || true
+          PRE=$([ "${{ steps.v.outputs.prerelease }}" = true ] && echo --prerelease || true)
+          {
+            echo "## Neu in $V"
+            echo
+            # bullet lines from the tag message become the notes in the Aroio app
+            git tag -l --format='%(contents)' "v$V" 2>/dev/null | sed -n '/^[-*] /p'
+            echo
+            echo "## Installation"
+            echo
+            echo "- **Update:** Aroios mit AroioOS-Neubau finden das Update selbst (Einstellungen › Updates)."
+            echo "- **SD-Karte:** \`sdcard-aroio\` für Aroio SU/EX/LT, \`sdcard-iqaudio\` für IQaudio-DACs, \`sdcard-generic\` für andere. Mit dem Raspberry Pi Imager schreiben."
+            echo
+            echo "Privater Neubau ohne Gewähr, siehe README."
+          } > notes.md
+          gh release create "v$V" output/aroio-*.img.xz output/aroio-*.raucb output/SHA256SUMS \
+            --title "AroioOS $V" --notes-file notes.md $PRE --verify-tag
+
+      - name: Testbuild aufheben
+        if: steps.v.outputs.version == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: aroio-${{ steps.v.outputs.build }}
+          path: output/aroio-*
+          retention-days: 7

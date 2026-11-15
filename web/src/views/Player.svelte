@@ -28,6 +28,7 @@
     upnp: t('Wähle „{name}“ in deiner UPnP-App (z. B. BubbleUPnP) als Renderer.', { name: d?.name }),
     roon: t('Wähle „{name}“ in Roon als Zone.', { name: d?.name }),
     input: t('Der Eingang spielt automatisch, sobald ein Signal anliegt.'),
+    netjack: t('Starte auf dem Rechner „jackd -d net“, dann spielt sein Ton über „{name}“.', { name: d?.name }),
   });
 </script>
 

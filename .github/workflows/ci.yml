@@ -1,0 +1,42 @@
+# Tests on every push and pull request (no image build: that is release.yml).
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Abhängigkeiten
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements-dev.txt
+          cd web && npm ci --no-audit --no-fund
+      - name: Backend, svelte-check, Build, Übersetzungen
+        run: ./dev.sh test
+      - name: Abläufe und Barrierefreiheit (Playwright + axe)
+        run: |
+          cd web
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: web/test-results
+          retention-days: 7

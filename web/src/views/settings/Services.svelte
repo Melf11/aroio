@@ -36,9 +36,23 @@
       <li><Toggle label="UPnP / DLNA" description={t('Für Apps wie BubbleUPnP, mConnect oder Linn Kazoo.')} checked={sv.upnp.enabled} onchange={(v) => save({ sources: { upnp: { enabled: v } } })} /></li>
       <li><Toggle label="Bluetooth" description={t('Handy direkt verbinden. Koppeln unter Einstellungen › Bluetooth.')} checked={app.topics.sources.find((s) => s.id === 'bluetooth')?.enabled} onchange={(v) => save({ sources: { bluetooth: { enabled: v } } })} /></li>
       <li><Toggle label="Roon" description={t('Der Aroio erscheint in Roon als Zone (Roon Bridge).')} checked={sv.roon.enabled} onchange={(v) => save({ sources: { roon: { enabled: v } } })} /></li>
+      <li><Toggle label="NetJack" description={t('Ton von einem Rechner mit JACK (z. B. Audio-Software im Studio). Der Rechner verbindet sich mit „jackd -d net“.')} checked={sv.netjack.enabled} onchange={(v) => save({ sources: { netjack: { enabled: v } } })} /></li>
+      {#if sv.netjack.enabled && d.expert_mode}
+        <li class="field nj">
+          <label for="njrate">{t('NetJack-Abtastrate')}</label>
+          <select id="njrate" class="input" value={sv.netjack.rate} onchange={(e) => save({ sources: { netjack: { rate: +e.currentTarget.value } } })} aria-describedby="njrate-h">
+            {#each [44100, 48000, 88200, 96000] as r}<option value={r}>{(r / 1000).toLocaleString()} kHz</option>{/each}
+          </select>
+          <span id="njrate-h" class="hint">{t('Der Rechner muss mit derselben Rate arbeiten.')}</span>
+        </li>
+      {/if}
       {#if d.has_input || d.expert_mode}
         <li><Toggle label={t('Eingang')} description={t('Analoger oder digitaler Eingang der Soundkarte.')} checked={app.topics.sources.find((s) => s.id === 'input')?.enabled ?? false} onchange={(v) => save({ sources: { input: { enabled: v } } })} /></li>
       {/if}
     </ul>
   {/if}
 </div>
+
+<style>
+  .nj { padding: 12px 16px; }
+</style>

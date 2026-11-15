@@ -675,4 +675,8 @@ export default {
   'Klangeinstellung 4': 'Sound setting 4',
   'Klangeinstellung 5': 'Sound setting 5',
   'Warte auf Taste für „{a}“ …': 'Waiting for the button for “{a}” …',
+  'Ton von einem Rechner mit JACK (z. B. Audio-Software im Studio). Der Rechner verbindet sich mit „jackd -d net“.': 'Sound from a computer running JACK (e.g. studio audio software). The computer connects with “jackd -d net”.',
+  'NetJack-Abtastrate': 'NetJack sample rate',
+  'Der Rechner muss mit derselben Rate arbeiten.': 'The computer must use the same rate.',
+  'Starte auf dem Rechner „jackd -d net“, dann spielt sein Ton über „{name}“.': 'Start “jackd -d net” on the computer, then its sound plays through “{name}”.',
 };

@@ -6,9 +6,8 @@ Wants=camilladsp.service
 [Service]
 # Phase 0: root, because aroiod switches systemd units and reboots.
 # Phase 1: own user + polkit rules for exactly these actions.
-ExecStart=/usr/bin/python3 -m aroiod --data /data/aroio --port 80 --static /usr/share/aroio-web
-WorkingDirectory=/usr/lib/aroiod
-Environment=PYTHONDONTWRITEBYTECODE=1
+# aroio-python: image code, or developer code from /data/dev (./dev.sh deploy)
+ExecStart=/usr/lib/aroio/aroio-python -m aroiod --data /data/aroio --port 80 --static /usr/share/aroio-web
 Restart=always
 RestartSec=1
 ExecStartPost=-/usr/lib/aroio/mark-good

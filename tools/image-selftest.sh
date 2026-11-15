@@ -27,7 +27,14 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/lib/aroio/infoscreen \
          etc/systemd/system/data.mount.wants/aroio-grow-data.service usr/sbin/sfdisk usr/bin/partx usr/lib/systemd/systemd-growfs \
          usr/share/aroio/filters/BBCDipL96.dbl usr/share/aroio/filters/EchoR192.dbl usr/share/aroio/licenses.json \
-         usr/lib/udev/rules.d/90-aroio-ir.rules usr/bin/ir-keytable; do
+         usr/lib/udev/rules.d/90-aroio-ir.rules usr/bin/ir-keytable \
+         usr/share/aroio/boot/Image usr/share/aroio/boot/bcm2711-rpi-4-b.dtb usr/share/aroio/boot/bcm2710-rpi-3-b.dtb \
+         usr/share/aroio/boot/overlays/iqaudio-dacplus.dtbo usr/share/aroio/boot/cmdline.txt.in \
+         usr/lib/aroio/rauc-tryboot usr/lib/aroio/reboot usr/lib/aroio/aroio-python usr/lib/aroio/trial-watch \
+         etc/systemd/system/multi-user.target.wants/aroio-trial-watch.service \
+         usr/bin/jackd usr/lib/jack/netmanager.so usr/lib/jack/audioadapter.so usr/lib/jack/jack_dummy.so \
+         usr/lib/systemd/system/aroio-netjack.service usr/lib/aroiod/aroiod/netjack.py usr/lib/aroiod/aroiod/updates.py \
+         etc/ssl/certs/ca-certificates.crt; do
     if [ -L "$R/$f" ]; then target="$R$(readlink "$R/$f")"; else target="$R/$f"; fi   # links are absolute
     [ -e "$target" ] || { echo "FEHLT: $f"; fail=1; }
 done
@@ -49,6 +56,10 @@ grep -q "^root:[*!]" "$R/etc/shadow" || { echo "root hat ein leeres Passwort (dr
 if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then
     [ -s "$R/root/.ssh/authorized_keys" ] || { echo "SSH-Schlüssel fehlt im Entwicklungs-Image"; fail=1; }
 fi
+grep -q "rauc.slot=@SLOT@" "$R/usr/share/aroio/boot/cmdline.txt.in" || { echo "cmdline ohne Slot-Kennung"; fail=1; }
+# updates from GitHub need TLS in Python, and every image must trust the release key
+chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }
+grep -q "$(sed -n 2p br2-external/board/rpi/rauc/release-cert.pem)" "$R/etc/rauc/keyring.pem" || { echo "Release-Zertifikat fehlt im Keyring"; fail=1; }
 [ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }
 grep -q "BindPaths=/data/iwd:/var/lib/iwd" "$R/usr/lib/systemd/system/iwd.service.d/aroio.conf" || { echo "iwd speichert WLANs nicht auf /data"; fail=1; }

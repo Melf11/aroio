@@ -33,6 +33,7 @@ SOURCES = {
     "bluetooth": {"name": "Bluetooth", "short": "Bluetooth", "controls": True},
     "input": {"name": "Eingang", "short": "Eingang", "controls": False},
     "roon": {"name": "Roon", "short": "Roon", "controls": True},
+    "netjack": {"name": "NetJack", "short": "NetJack", "controls": False},
 }
 
 
@@ -72,7 +73,7 @@ class Device:
         self.source_meta = {}       # last meta per outside source (may arrive before "start")
         self.dsp_status = {}
         self._end_task = None
-        self.update = {"current": VERSION, "available": None, "state": "idle", "progress": 0,
+        self.update = {"current": getattr(world, "version", None) or VERSION, "available": None, "state": "idle", "progress": 0,
                        "notes": [], "checked": None}
         self.pending_migration = None
         self.reboot_required = False
@@ -118,6 +119,29 @@ class Device:
         self.world.rename(self.config.get("device.name"))
         self.publish_all()
         self.apply_dsp()
+        if getattr(self.world, "auto_updates", False):
+            self._update_task = asyncio.ensure_future(self._update_loop())
+
+    async def _update_loop(self, first_delay=300, interval=600, check_every=86400):
+        """Look for updates once a day; with update.auto install them at night while nothing plays."""
+        from .updates import auto_install_due
+        await asyncio.sleep(first_delay)
+        last_check = 0.0
+        while True:
+            try:
+                if time.time() - last_check > check_every:
+                    last_check = time.time()
+                    await self.check_update()
+                if (self.update["available"] and self.update["state"] == "idle"
+                        and auto_install_due(time.localtime().tm_hour, self.state == "playing",
+                                             self.config.get("update.auto"), self.update["current"])):
+                    await self.install_update()
+                    await self.reboot()
+            except Exception as exc:          # never let the loop die
+                log.warning("automatic update: %s", exc)
+                self.update.update(state="idle", progress=0)
+                self.publish_update()
+            await asyncio.sleep(interval)
 
     def publish_all(self):
         self.publish_device()
@@ -144,7 +168,7 @@ class Device:
             "models": [{"id": k, "label": m["label"]} for k, m in models.MODELS.items()],
             "board": self.world.board, "board_label": board["label"],
             "fixed_level": self.fixed_level, "has_input": self.model["has_input"] or c["sources"]["input"]["enabled"],
-            "version": VERSION, "setup_completed": c["setup"]["completed"],
+            "version": self.update["current"], "setup_completed": c["setup"]["completed"],
             "reboot_required": self.reboot_required,
             "simulated": self.world.simulated,
         })
@@ -215,6 +239,7 @@ class Device:
             "airplay": {"enabled": c["sources"]["airplay"]["enabled"]},
             "upnp": {"enabled": c["sources"]["upnp"]["enabled"]},
             "roon": {"enabled": c["sources"]["roon"]["enabled"]},
+            "netjack": dict(c["sources"]["netjack"]),
         })
 
     def publish_network(self):
@@ -357,7 +382,7 @@ class Device:
     def source_stopped(self, sid):
         if self.source == sid:
             self._freeze()
-            self.state = "stopped" if sid in ("bluetooth", "input", "airplay") else "paused"
+            self.state = "stopped" if sid in ("bluetooth", "input", "airplay", "netjack") else "paused"
             self.publish_player()
             self.publish_sources()
 
@@ -721,9 +746,16 @@ class Device:
             raise ValueError("Kein Update verfügbar.")
         self.update.update(state="installing", progress=0)
         self.publish_update()
-        async for progress in self.world.install_update(self.update["available"]):
-            self.update["progress"] = progress
+        try:
+            async for progress in self.world.install_update(self.update["available"]):
+                self.update["progress"] = progress
+                self.publish_update()
+        except Exception as exc:
+            self.update.update(state="idle", progress=0)
             self.publish_update()
+            self.hub.notice(str(exc) if isinstance(exc, ValueError) else "Das Update ist fehlgeschlagen.",
+                            level="danger", key="update")
+            raise
         self.update.update(state="reboot_required", progress=100)
         self.publish_update()
 

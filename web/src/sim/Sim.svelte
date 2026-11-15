@@ -98,7 +98,7 @@
   const d = $derived(app.topics.device);
   const ev = async (name, data) => { try { await sim(name, data); } catch (e) { toast(e.message, 'danger'); } };
   const ext = (source) => ev('external_start', { source });
-  const extNames = { airplay: 'AirPlay (iPhone)', spotify: 'Spotify Connect', bluetooth: 'Bluetooth-Handy', upnp: 'UPnP (BubbleUPnP)', roon: 'Roon', input: 'Eingang (Signal)' };
+  const extNames = { airplay: 'AirPlay (iPhone)', spotify: 'Spotify Connect', bluetooth: 'Bluetooth-Handy', upnp: 'UPnP (BubbleUPnP)', roon: 'Roon', input: 'Eingang (Signal)', netjack: 'NetJack (Studio-PC)' };
   const IR = [['KEY_PLAYPAUSE', '⏯'], ['KEY_PREVIOUS', '⏮'], ['KEY_NEXT', '⏭'], ['KEY_VOLUMEDOWN', 'Vol −'], ['KEY_VOLUMEUP', 'Vol +'], ['KEY_MUTE', 'Stumm'], ['KEY_1', '1'], ['KEY_2', '2'], ['KEY_3', '3']];
 </script>
 

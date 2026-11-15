@@ -188,14 +188,13 @@ def migrate(text, filter_files=()):
             if _on(u.get(prefix + k, "OFF")):
                 used.add(v)
     mapping = {"squeezelite": "lms", "shairportsync": "airplay", "gmediarender": "upnp",
-               "bluealsaaplay": "bluetooth", "spotifyd": "spotify", "librespot": "spotify", "input": "input"}
+               "bluealsaaplay": "bluetooth", "spotifyd": "spotify", "librespot": "spotify", "input": "input",
+               "netjack": "netjack"}
     if used:
-        for src in ("lms", "airplay", "upnp", "bluetooth", "spotify", "input"):
+        for src in ("lms", "airplay", "upnp", "bluetooth", "spotify", "input", "netjack"):
             sources[src] = {"enabled": any(mapping.get(x) == src for x in used)}
-        if "netjack" in used:
-            rep.add("Quellen", "NetJack", "entfällt", "check", "NetJack gibt es im neuen Aroio nicht mehr.")
     labels = {"lms": "Lyrion/LMS", "airplay": "AirPlay", "upnp": "UPnP/DLNA", "bluetooth": "Bluetooth",
-              "spotify": "Spotify", "input": "Eingang"}
+              "spotify": "Spotify", "input": "Eingang", "netjack": "NetJack"}
     on = [labels[s] for s, v in sources.items() if v["enabled"]]
     if on:
         rep.add("Quellen", "Aktive Quellen", ", ".join(on))

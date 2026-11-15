@@ -48,6 +48,18 @@ async def test_disabled_source_is_ignored(client):
     assert (await state(client))["player"]["source"] != "spotify"
 
 
+async def test_netjack_switchable(client):
+    await post(client, "/sim/external_start", {"source": "netjack"})
+    assert (await state(client))["player"]["source"] != "netjack"          # off by default
+    r = await client.patch("/api/v1/config", json={"sources": {"netjack": {"enabled": True, "rate": 44100}}})
+    assert r.status == 200
+    await post(client, "/sim/external_start", {"source": "netjack"})
+    s = await state(client)
+    assert s["player"]["source"] == "netjack" and s["services"]["netjack"]["rate"] == 44100
+    r = await client.patch("/api/v1/config", json={"sources": {"netjack": {"rate": 12345}}})
+    assert r.status == 400
+
+
 async def test_volume_encoder_and_fixed_level(client, device):
     await post(client, "/player/volume", {"value": 50})
     await post(client, "/sim/encoder", {"steps": 2})

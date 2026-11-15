@@ -1,9 +1,110 @@
 #!/bin/sh
-# RAUC custom bootloader backend. Phase 1: switch slots via the Raspberry Pi firmware
-# (tryboot / autoboot.txt) with automatic fallback. Until then: report slot A as booted and good.
+# RAUC custom bootloader backend for the Raspberry Pi firmware.
+#
+# Boot partition: firmware, config.txt, aroio.txt (shared) and one directory per slot
+# (slot-a/, slot-b/) with kernel, device trees, overlays and cmdline.txt. config.txt
+# selects the slot with os_prefix=slot-x/. The files of a slot come from its root file
+# system (/usr/share/aroio/boot), so an update brings its own kernel.
+#
+# A new slot is a trial ($STATE/trial) until aroiod is up (mark-good):
+# - Pi 4/5: tryboot.txt points to the new slot and /usr/lib/aroio/reboot boots it once
+#   ("0 tryboot"); config.txt switches only on mark-good. A crash or hang falls back
+#   to the old slot on the next start (panic=10, aroio-trial-watch after 5 minutes).
+# - Pi 3 has no tryboot: config.txt switches at once, aroio-trial-watch switches back
+#   when aroiod does not come up. A kernel that never reaches user space needs the SD card.
+set -e
+# paths can be overridden for tests (tests/test_updates.py)
+BOOT=${AROIO_BOOT:-/run/aroio/abboot}
+STATE=${AROIO_STATE:-/data/rauc}
+RUN=${AROIO_RUN:-/run/aroio}
+CMDLINE=${AROIO_CMDLINE:-/proc/cmdline}
+MODEL=${AROIO_MODEL_FILE:-/proc/device-tree/model}
+
+lower() { echo "$1" | tr AB ab; }
+dev_of() { if [ "$1" = A ]; then echo /dev/mmcblk0p2; else echo /dev/mmcblk0p3; fi; }
+other() { if [ "$1" = A ]; then echo B; else echo A; fi; }
+booted() { s=$(sed -n 's/.*rauc\.slot=\([AB]\).*/\1/p' "$CMDLINE"); echo "${s:-A}"; }
+has_tryboot() { grep -qaE "Raspberry Pi (4|5|400|500)|Compute Module (4|5)" "$MODEL" 2>/dev/null; }
+mount_boot() {
+    [ -n "${AROIO_BOOT:-}" ] && return 0
+    mkdir -p "$BOOT"
+    mountpoint -q "$BOOT" || mount -t vfat -o rw,sync /dev/mmcblk0p1 "$BOOT"
+}
+primary() {
+    mount_boot
+    p=$(sed -n 's/^os_prefix=slot-\([ab]\)\/.*/\1/p' "$BOOT/config.txt" | tail -n 1)
+    if [ "$p" = b ]; then echo B; else echo A; fi
+}
+# config.txt or tryboot.txt for a slot: a copy of config.txt with that slot's os_prefix
+write_config() {
+    sed "s|^os_prefix=.*|os_prefix=slot-$(lower "$2")/|" "$BOOT/config.txt" > "$BOOT/$1.tmp"
+    sync
+    mv "$BOOT/$1.tmp" "$BOOT/$1"
+    sync
+}
+install_boot_files() {
+    d="$BOOT/slot-$(lower "$1")"
+    if [ -n "${AROIO_TEST_ROOTS:-}" ]; then
+        m="$AROIO_TEST_ROOTS/$1"; umount() { :; }
+    else
+        m="$RUN/newroot"
+        mkdir -p "$m"
+        mount -o ro "$(dev_of "$1")" "$m"
+    fi
+    rm -rf "$d.new"
+    mkdir -p "$d.new"
+    if ! cp -r "$m/usr/share/aroio/boot/." "$d.new/"; then
+        umount "$m"; rm -rf "$d.new"; echo "rauc-tryboot: no space for the boot files" >&2; exit 1
+    fi
+    umount "$m"
+    sed "s|@ROOT@|$(dev_of "$1")|; s|@SLOT@|$1|" "$d.new/cmdline.txt.in" > "$d.new/cmdline.txt"
+    rm -f "$d.new/cmdline.txt.in"
+    sync
+    rm -rf "$d"
+    mv "$d.new" "$d"
+    sync
+}
+
 case "$1" in
-    get-primary|get-current) echo A ;;
-    get-state) echo good ;;
-    set-primary|set-state) echo "rauc-tryboot: $* (not implemented yet)" >&2; exit 1 ;;
-    *) exit 1 ;;
+get-primary) primary ;;
+get-current) booted ;;
+get-state) cat "$STATE/state-$2" 2>/dev/null || echo good ;;
+set-state)
+    mkdir -p "$STATE"
+    echo "$3" > "$STATE/state-$2"
+    if [ "$3" = good ] && [ "$2" = "$(booted)" ] && [ "$(cat "$STATE/trial" 2>/dev/null)" = "$2" ]; then
+        mount_boot
+        [ "$(primary)" = "$2" ] || write_config config.txt "$2"      # tryboot: make it permanent
+        rm -f "$BOOT/tryboot.txt" "$STATE/trial"
+        sync
+    fi
+    ;;
+set-primary)
+    mount_boot
+    if [ "$2" = "$(booted)" ]; then
+        write_config config.txt "$2"
+        rm -f "$BOOT/tryboot.txt" "$STATE/trial" "$RUN/tryboot"
+        exit 0
+    fi
+    install_boot_files "$2"
+    mkdir -p "$STATE" "$RUN"
+    echo "$2" > "$STATE/trial"
+    if has_tryboot; then
+        write_config tryboot.txt "$2"
+        touch "$RUN/tryboot"
+    else
+        write_config config.txt "$2"
+    fi
+    ;;
+revert)
+    # called by aroio-trial-watch: the trial slot did not come up healthy
+    mount_boot
+    t=$(cat "$STATE/trial" 2>/dev/null || true)
+    [ -n "$t" ] || exit 0
+    echo bad > "$STATE/state-$t"
+    rm -f "$STATE/trial" "$BOOT/tryboot.txt"
+    [ "$(primary)" = "$t" ] && write_config config.txt "$(other "$t")"
+    sync
+    ;;
+*) exit 1 ;;
 esac

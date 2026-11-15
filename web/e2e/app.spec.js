@@ -258,3 +258,19 @@ test('Fernbedienung: Taste anlernen und Stummschalten', async ({ page, request }
   await page.getByRole('button', { name: 'Stumm' }).click();
   await expect(page.getByRole('button', { name: 'Stumm' })).toHaveAttribute('aria-pressed', 'false');
 });
+
+test('NetJack einschalten, Rate wählen, Rechner spielt', async ({ page, request }) => {
+  await fresh(request);
+  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
+  await page.goto('/einstellungen/dienste');
+  const sw = page.getByRole('switch', { name: 'NetJack' });
+  await expect(sw).not.toBeChecked();
+  await sw.click();
+  await expect(sw).toBeChecked();
+  await page.getByLabel('NetJack-Abtastrate').selectOption('96000');
+  await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).services.netjack.rate).toBe(96000);
+  await axe(page, 'Dienste mit NetJack');
+  await api(request, '/sim/external_start', { source: 'netjack' });
+  await page.goto('/');
+  await expect(page.getByText('Studio-PC').first()).toBeVisible();
+});

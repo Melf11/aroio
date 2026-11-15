@@ -11,3 +11,4 @@ upmpdcli.service
 mpd.service
 squeezelite.service
 aroio-infoscreen.service
+aroio-trial-watch.service

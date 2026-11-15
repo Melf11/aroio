@@ -6,6 +6,7 @@ development ./dev.sh starts it with --sim next to the Vite dev server.
 
 import argparse
 import logging
+import os
 from pathlib import Path
 
 from aiohttp import web
@@ -51,7 +52,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(name)s %(levelname)s %(message)s")
     device = create(args.data, sim=args.sim, model=args.model, board=args.board, mic_mode=args.mic)
-    app = build_app(device, args.static)
+    app = build_app(device, os.environ.get("AROIO_STATIC") or args.static)
 
     async def on_start(_app):
         if hasattr(device.world, "start"):

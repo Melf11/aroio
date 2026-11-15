@@ -1,0 +1,13 @@
+#!/bin/sh
+# python3 with aroiod from the image, or from /data/dev after `./dev.sh deploy`.
+# Developer code is only used on the system version it was deployed for: after an
+# update (RAUC) the image's own code runs again until the next deploy.
+if [ -f /data/dev/active ] && [ -f /data/dev/aroiod/__init__.py ] &&
+   [ "$(cat /data/dev/base 2>/dev/null)" = "$(cat /etc/aroio-version 2>/dev/null)" ]; then
+    export PYTHONPATH=/data/dev
+    [ -f /data/dev/web/index.html ] && export AROIO_STATIC=/data/dev/web
+else
+    export PYTHONPATH=/usr/lib/aroiod
+fi
+export PYTHONDONTWRITEBYTECODE=1
+exec /usr/bin/python3 "$@"

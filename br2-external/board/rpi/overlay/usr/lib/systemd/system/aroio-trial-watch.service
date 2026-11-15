@@ -1,0 +1,11 @@
+[Unit]
+Description=Fall back to the previous system when an update does not come up
+After=data.mount
+RequiresMountsFor=/data
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/aroio/trial-watch
+
+[Install]
+WantedBy=multi-user.target

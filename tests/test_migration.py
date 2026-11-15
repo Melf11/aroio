@@ -50,11 +50,13 @@ def test_legacy_names_and_hotspot():
     assert "wifi" not in result["patch"]["network"]
 
 
-def test_netjack_dropped_and_missing_filters_reported():
+def test_netjack_kept_and_missing_filters_reported():
     text = 'AUDIO_OUTPUT="jack-bf"\nBRUTEFIR="ON"\nJACKBF_NETJACK="ON"\nJACKBF_SQUEEZELITE="ON"\nCOEFF_NAME0="Raum"\nDEF_COEFF="0"\n'
     result = migrate(text, [])
     rep = statuses(result)
-    assert rep[("Quellen", "NetJack")]["status"] == "check"
+    assert result["patch"]["sources"]["netjack"] == {"enabled": True}
+    assert result["patch"]["sources"]["airplay"] == {"enabled": False}
+    assert "NetJack" in rep[("Quellen", "Aktive Quellen")]["value"]
     assert rep[("Klang", "Filterbank 1: Raum")]["status"] == "check"
     assert "presets" not in result["patch"]["dsp"]
 

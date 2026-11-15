@@ -11,7 +11,7 @@
   const u = $derived(app.topics.update);
   const sv = $derived(app.topics.services);
   const netText = $derived(!n ? '' : n.lan.connected ? t('LAN · {ip}', { ip: n.lan.address }) : n.wifi.connected ? t('WLAN „{ssid}“ · {ip}', { ssid: n.wifi.ssid, ip: n.wifi.address }) : n.hotspot.active ? t('Einrichtungs-Hotspot aktiv') : t('Nicht verbunden'));
-  const svcText = $derived(!sv ? '' : [sv.spotify.enabled && 'Spotify', sv.tidal.enabled && 'TIDAL', sv.qobuz.enabled && 'Qobuz', sv.airplay.enabled && 'AirPlay', sv.upnp.enabled && 'UPnP', sv.roon.enabled && 'Roon'].filter(Boolean).join(', '));
+  const svcText = $derived(!sv ? '' : [sv.spotify.enabled && 'Spotify', sv.tidal.enabled && 'TIDAL', sv.qobuz.enabled && 'Qobuz', sv.airplay.enabled && 'AirPlay', sv.upnp.enabled && 'UPnP', sv.roon.enabled && 'Roon', sv.netjack?.enabled && 'NetJack'].filter(Boolean).join(', '));
   const setExpert = async (v) => { try { await config({ device: { expert_mode: v } }); toast(v ? t('Expertenmodus an') : t('Expertenmodus aus')); } catch (e) { toast(e.message, 'danger'); } };
 </script>
 

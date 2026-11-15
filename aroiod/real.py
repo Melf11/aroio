@@ -6,8 +6,7 @@ Same interface as aroiod.sim.SimWorld. Phase 1 status:
             aplay/arecord, network status, board detection, reboot
 - minimal:  sources (systemd units on/off, events from player hooks via
             /api/v1/internal/source), Spotify/Lyrion/Bluetooth status
-- missing:  pausing other sources through their own interfaces, BlueZ/iwd D-Bus,
-            RAUC updates, TIDAL/Qobuz login (Lyrion plugins)
+- missing:  BlueZ/iwd D-Bus, TIDAL/Qobuz login (Lyrion plugins)
 """
 
 import asyncio
@@ -30,7 +29,8 @@ CAMILLA_URL = "ws://127.0.0.1:1234"
 LOOPBACK_PLAY = "plughw:Loopback,0,0"  # players and aroiod's own signals write here (plug: format/rate of CamillaDSP)
 SOURCE_UNITS = {"lms": "squeezelite.service", "spotify": "aroio-spotify.service",
                 "airplay": "shairport-sync.service", "upnp": "upmpdcli.service",
-                "bluetooth": "bluealsa-aplay.service", "roon": "roonbridge.service"}
+                "bluetooth": "bluealsa-aplay.service", "roon": "roonbridge.service",
+                "netjack": "aroio-netjack.service"}
 
 
 # ── ALSA ─────────────────────────────────────────────────────────────────────
@@ -524,6 +524,9 @@ class RealWorld:
             await _mpd("pause 1")
         elif sid == "lms":
             await _run("systemctl", "restart", "squeezelite.service")
+        elif sid == "netjack":
+            # closes the way to the loopback until the computer disconnects (aroiod.netjack)
+            await _run("systemctl", "kill", "--kill-whom=main", "-s", "SIGUSR1", "aroio-netjack.service")
 
     def resume_source(self, sid):
         log.info("resume %s (source control: phase 1)", sid)
@@ -544,16 +547,20 @@ class RealWorld:
             on = sources.get(sid, {}).get("enabled")
             self._spawn(_run("systemctl", "start" if on else "stop", unit))
         self._write_lms_env(sources.get("lms", {}))
+        self._write_env("netjack.env", f"NETJACK_RATE={sources.get('netjack', {}).get('rate', 48000)}\n",
+                        "aroio-netjack.service")
+
+    def _write_env(self, name, text, unit):
+        env = Path("/data/aroio") / name
+        if not env.exists() or env.read_text() != text:
+            env.parent.mkdir(parents=True, exist_ok=True)
+            env.write_text(text)
+            self._spawn(_run("systemctl", "try-restart", unit))
 
     def _write_lms_env(self, lms):
         """squeezelite finds the Lyrion server itself unless one is configured."""
         server = lms.get("server") or ""            # player port 3483 (config "port" is the web port)
-        text = f"LMS_SERVER={'-s ' + server if server else ''}\n"
-        env = Path("/data/aroio/squeezelite.env")
-        if not env.exists() or env.read_text() != text:
-            env.parent.mkdir(parents=True, exist_ok=True)
-            env.write_text(text)
-            self._spawn(_run("systemctl", "try-restart", "squeezelite.service"))
+        self._write_env("squeezelite.env", f"LMS_SERVER={'-s ' + server if server else ''}\n", "squeezelite.service")
 
     def rename(self, name):
         """One name everywhere: AirPlay, Spotify, UPnP (EnvironmentFile), Bluetooth (alias)."""
@@ -794,16 +801,82 @@ class RealWorld:
         write_iwd_profile("/data/iwd", ssid, psk)
 
     # ── system ──
+    @property
+    def version(self):
+        try:
+            return Path("/etc/aroio-version").read_text().strip() or "dev"
+        except OSError:
+            return "dev"
+
     async def check_update(self, channel):
-        return None
+        """Newest fitting GitHub release (aroiod.updates), None when up to date or offline."""
+        from . import updates
+        repo = os.environ.get("AROIO_UPDATE_REPO", updates.REPO)
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s:
+                async with s.get(updates.API.format(repo=repo),
+                                 headers={"Accept": "application/vnd.github+json",
+                                          "User-Agent": "AroioOS"}) as r:
+                    if r.status != 200:
+                        log.warning("update check: HTTP %s", r.status)
+                        return None
+                    releases = await r.json()
+        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+            log.warning("update check: %s", exc)
+            return None
+        found = updates.pick_release(releases, channel, self.version)
+        self._update = found
+        return found
 
     async def install_update(self, version):
-        raise ValueError("Updates über RAUC folgen in Phase 1.")
-        yield 0  # pragma: no cover
+        """Download the bundle to /data (0–50 %), then `rauc install` (50–100 %).
+        RAUC checks the signature against /etc/rauc/keyring.pem and writes the other slot."""
+        from . import updates
+        found = getattr(self, "_update", None)
+        if not found or found["version"] != version:
+            raise ValueError("Update nicht mehr verfügbar, bitte erneut suchen.")
+        target = Path("/data/update/aroio.raucb")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        free = os.statvfs(target.parent)
+        if found["size"] and free.f_bavail * free.f_frsize < found["size"] + 50_000_000:
+            raise ValueError("Zu wenig Speicherplatz für das Update.")
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3600, sock_read=60)) as s:
+                async with s.get(found["url"], headers={"User-Agent": "AroioOS"}) as r:
+                    if r.status != 200:
+                        raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
+                    total = int(r.headers.get("Content-Length") or found["size"] or 0)
+                    done, last = 0, -1
+                    with open(target, "wb") as f:
+                        async for chunk in r.content.iter_chunked(1 << 16):
+                            f.write(chunk)
+                            done += len(chunk)
+                            pct = done * 50 // total if total else 0
+                            if pct != last:
+                                last = pct
+                                yield pct
+            proc = await asyncio.create_subprocess_exec("rauc", "install", str(target),
+                                                        stdout=asyncio.subprocess.PIPE,
+                                                        stderr=asyncio.subprocess.STDOUT)
+            tail = []
+            async for raw in proc.stdout:
+                line = raw.decode(errors="replace").rstrip()
+                tail = (tail + [line])[-5:]
+                pct = updates.rauc_progress(line)
+                if pct is not None:
+                    yield 50 + pct // 2
+            if await proc.wait():
+                log.error("rauc install: %s", " | ".join(tail))
+                raise ValueError("Das Update ließ sich nicht installieren. Der Aroio läuft unverändert weiter.")
+        except aiohttp.ClientError as exc:
+            raise ValueError(f"Download fehlgeschlagen: {exc}") from exc
+        finally:
+            target.unlink(missing_ok=True)
 
     async def reboot(self, device):
         await asyncio.sleep(1.0)                 # let the app receive "rebooting" first
-        await _run("systemctl", "reboot")
+        # after an update the new slot is tried once (Pi 4/5 tryboot), see /usr/lib/aroio/rauc-tryboot
+        await _run("/usr/lib/aroio/reboot")
 
     # ── measurement microphone ──
     def mic_status(self):

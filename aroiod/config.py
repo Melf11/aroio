@@ -126,6 +126,8 @@ SCHEMA = {
                       "codec": F(str, "auto", choices=["auto", "ldac", "aptx_hd", "aac", "sbc"])},
         "input": {"enabled": F(bool, False)},
         "roon": {"enabled": F(bool, False)},
+        # NetJack 2: the Aroio is the master, computers with JACK connect as slaves
+        "netjack": {"enabled": F(bool, False), "rate": F(int, 48000, choices=[44100, 48000, 88200, 96000])},
     },
     "services": {
         "tidal": {"enabled": F(bool, False)},

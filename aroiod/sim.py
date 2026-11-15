@@ -30,6 +30,8 @@ EXTERNAL = {
              "album": "Live in Hamburg", "duration": 611, "format": {"codec": "FLAC", "bits": 24, "rate": 192000}},
     "roon": {"who": "Roon Core", "title": "Blue in Green", "artist": "Atlas Trio", "album": "Spuren",
              "duration": 338, "format": {"codec": "FLAC", "bits": 24, "rate": 96000}},
+    "netjack": {"who": "Studio-PC", "title": "NetJack", "artist": "Studio-PC (JACK)", "album": "", "duration": 0,
+                "format": {"codec": "PCM", "bits": 32, "rate": 48000}},
     "input": {"who": "Eingang", "title": "Eingang", "artist": "Analog / Digital", "album": "", "duration": 0,
               "format": {"codec": "PCM", "bits": 24, "rate": 96000}},
 }
