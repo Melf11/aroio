@@ -57,6 +57,7 @@ if [ "$(cat "$R/etc/aroio-version")" = "dev" ]; then
     [ -s "$R/root/.ssh/authorized_keys" ] || { echo "SSH-Schlüssel fehlt im Entwicklungs-Image"; fail=1; }
 fi
 grep -q "rauc.slot=@SLOT@" "$R/usr/share/aroio/boot/cmdline.txt.in" || { echo "cmdline ohne Slot-Kennung"; fail=1; }
+[ -z "$(ls -A "$R/boot" 2>/dev/null)" ] || { echo "Kernel doppelt in /boot"; fail=1; }
 # updates from GitHub need TLS in Python, and every image must trust the release key
 chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }
 grep -q "$(sed -n 2p br2-external/board/rpi/rauc/release-cert.pem)" "$R/etc/rauc/keyring.pem" || { echo "Release-Zertifikat fehlt im Keyring"; fail=1; }

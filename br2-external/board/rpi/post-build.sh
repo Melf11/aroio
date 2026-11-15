@@ -60,6 +60,8 @@ for dtb in bcm2710-rpi-3-b bcm2710-rpi-3-b-plus bcm2710-rpi-2-b bcm2711-rpi-4-b 
 done
 cp -r "$BINARIES_DIR/rpi-firmware/overlays" "$BOOTFILES/"
 cp "$BINARIES_DIR/rpi-firmware/cmdline.txt" "$BOOTFILES/cmdline.txt.in"
+# the kernel package also installs Image + dtbs to /boot: nobody reads them there (25 MB)
+find "$TARGET/boot" -mindepth 1 -delete 2>/dev/null || true
 
 # RAUC: system.conf + keyring. Without a release certificate a development key is created
 # (only for development images; release builds pass AROIO_RAUC_CERT/AROIO_RAUC_KEY).

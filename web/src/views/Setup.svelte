@@ -117,6 +117,10 @@
           <li><Toggle label={t('AirPlay (iPhone, Mac)')} checked={sv.airplay.enabled} onchange={(v) => save({ sources: { airplay: { enabled: v } } })} /></li>
           <li><Toggle label="Bluetooth" checked={app.topics.sources.find((s) => s.id === 'bluetooth')?.enabled} onchange={(v) => save({ sources: { bluetooth: { enabled: v } } })} /></li>
           <li><Toggle label="UPnP / DLNA" checked={sv.upnp.enabled} onchange={(v) => save({ sources: { upnp: { enabled: v } } })} /></li>
+          {#if sv.netjack}
+            <li><Toggle label="NetJack" description={t('Ton von einem Rechner mit JACK (z. B. Audio-Software im Studio). Der Rechner verbindet sich mit „jackd -d net“.')}
+                        checked={sv.netjack.enabled} onchange={(v) => save({ sources: { netjack: { enabled: v } } })} /></li>
+          {/if}
         </ul>
         <p class="muted small">{t('Anmelden bei TIDAL und Qobuz kannst du danach unter Einstellungen › Dienste.')}</p>
       {/if}

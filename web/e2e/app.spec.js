@@ -61,6 +61,8 @@ test('Einrichtung beim ersten Start', async ({ page, request }) => {
   await page.getByRole('button', { name: 'Weiter' }).click();
   await expect(page.getByText('per Kabel verbunden')).toBeVisible();
   await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('switch', { name: /^NetJack/ })).toBeVisible();
+  await axe(page, 'setup-services');
   await page.getByRole('button', { name: 'Weiter' }).click();
   await expect(page.getByRole('heading', { name: 'Welche Soundkarte steckt im Aroio?' })).toBeVisible();
   await expect(page.getByRole('radio', { name: /^Aroio DAC/ })).toBeChecked();         // default

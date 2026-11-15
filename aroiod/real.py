@@ -396,6 +396,7 @@ class LoopbackWatch:
 
 class RealWorld:
     simulated = False
+    auto_updates = True             # engine: daily check on GitHub, nightly install if wanted
     rate_from_loopback = True       # the rate is what the player opened the loopback with
     factory_filter_dir = "/usr/share/aroio/filters"
     speed = 1.0

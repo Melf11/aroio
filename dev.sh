@@ -41,7 +41,7 @@ aroiod() {
 }
 
 HOST="${AROIO_HOST:-aroio.local}"
-on_device() { ssh -o ConnectTimeout=5 "root@$HOST" "$@"; }
+on_device() { ssh -o ConnectTimeout=5 ${AROIO_SSH_OPTS:-} "root@$HOST" "$@"; }   # AROIO_SSH_OPTS: extra ssh options
 
 deploy() {
     local web=1
