@@ -188,10 +188,6 @@ jobs:
           echo "Build wird in Teil $NEXT fortgesetzt." >> "$GITHUB_STEP_SUMMARY"
 
       # ── finished ──
-      - name: Selbsttest
-        if: steps.build.outputs.handover != 'true'
-        run: make selftest AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }}
-
       - name: Compiler-Cache sichern
         if: steps.build.outputs.handover != 'true' && env.SELF_HOSTED != 'true'
         uses: actions/cache/save@v6
@@ -205,6 +201,15 @@ jobs:
         with:
           path: /mnt/aroio-build/dl
           key: buildroot-dl-${{ hashFiles('br2-external/configs/*', 'br2-external/package/**/*.mk', 'br2-external/buildroot-patches/*', 'Makefile') }}
+
+      # the self-test runs the image's ARM programs in a chroot: x86 runners need QEMU
+      - uses: docker/setup-qemu-action@v4
+        if: steps.build.outputs.handover != 'true' && runner.arch != 'ARM64'
+        with:
+          platforms: arm64
+      - name: Selbsttest
+        if: steps.build.outputs.handover != 'true'
+        run: make selftest AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }}
 
       - name: Dateien
         if: steps.build.outputs.handover != 'true'
