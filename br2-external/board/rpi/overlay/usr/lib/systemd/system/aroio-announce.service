@@ -1,0 +1,11 @@
+[Unit]
+Description=Announce the Aroio's addresses in the network (gratuitous ARP after boot)
+After=systemd-networkd.service iwd.service
+Wants=systemd-networkd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/aroio/announce
+
+[Install]
+WantedBy=multi-user.target

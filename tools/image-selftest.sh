@@ -36,7 +36,8 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          etc/systemd/system/multi-user.target.wants/aroio-trial-watch.service \
          usr/bin/jackd usr/lib/jack/netmanager.so usr/lib/jack/audioadapter.so usr/lib/jack/jack_dummy.so \
          usr/lib/systemd/system/aroio-netjack.service usr/lib/aroiod/aroiod/netjack.py usr/lib/aroiod/aroiod/updates.py \
-         etc/ssl/certs/ca-certificates.crt; do
+         etc/ssl/certs/ca-certificates.crt usr/lib/aroio/announce usr/bin/arping \
+         etc/systemd/system/multi-user.target.wants/aroio-announce.service; do
     target="$R/$f"
     if [ -L "$target" ]; then   # links point inside the image: absolute (from its root) or relative
         l=$(readlink "$target"); case "$l" in /*) target="$R$l";; *) target="$(dirname "$target")/$l";; esac
