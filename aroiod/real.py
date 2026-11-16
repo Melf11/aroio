@@ -127,10 +127,11 @@ def write_iwd_profile(directory, ssid, psk):
 
 
 def parse_bt_devices(text):
-    """`bluetoothctl devices [Paired|Connected]` -> [{"address", "name"}]"""
+    """`bluetoothctl devices [Paired|Connected]` -> [{"address", "name"}]. Without a terminal
+    bluetoothctl may still print colour codes and its prompt in front of the lines."""
     out = []
-    for line in text.splitlines():
-        m = re.match(r"^Device ([0-9A-F:]{17}) (.*)$", line.strip())
+    for line in re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\x01|\x02", "", text).splitlines():
+        m = re.search(r"\bDevice ([0-9A-F:]{17}) (.*)$", line.strip())
         if m:
             out.append({"address": m[1], "name": m[2]})
     return out
@@ -849,8 +850,12 @@ class RealWorld:
             connected = subprocess.run(["bluetoothctl", "devices", "Connected"], capture_output=True, text=True, timeout=3).stdout
         except (OSError, subprocess.SubprocessError):
             return []
-        on = {d["address"] for d in parse_bt_devices(connected)}
-        return [dict(d, connected=d["address"] in on, trusted=True) for d in parse_bt_devices(paired)]
+        on = parse_bt_devices(connected)
+        known = parse_bt_devices(paired)
+        # a phone can be connected without a stored pairing (yet): list it too
+        known += [d for d in on if d["address"] not in {k["address"] for k in known}]
+        on_addr = {d["address"] for d in on}
+        return [dict(d, connected=d["address"] in on_addr, trusted=True) for d in known]
 
     def bluetooth_status(self, cfg):
         until = getattr(self, "_bt_pair_until", 0)

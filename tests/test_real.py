@@ -185,3 +185,34 @@ def test_capture_released_on_device():
     cfg = dsp.camilla_config(builtin_bypass(), 44100, release_capture=True)
     assert cfg["devices"]["capture"]["stop_on_inactive"] is True
     assert "stop_on_inactive" not in dsp.camilla_config(builtin_bypass(), 44100)["devices"]["capture"]
+
+
+def test_parse_bt_devices_with_prompt_and_colours():
+    text = "\x1b[0;94m[bluetooth]\x1b[0m# Device B4:AE:C1:44:02:EA Melfs iPhone\r\n[bluetooth]# \n"
+    assert real.parse_bt_devices(text) == [{"address": "B4:AE:C1:44:02:EA", "name": "Melfs iPhone"}]
+
+
+async def test_bluetooth_list_follows_connections(monkeypatch):
+    from aroiod import bt_watch as bw
+
+    class Dev:
+        source = None
+        published = 0
+
+        def publish_bluetooth(self):
+            self.published += 1
+
+    out = {"list-pcms": ""}
+
+    async def fake_out(*cmd, timeout=4):
+        return out.get(cmd[1], "")
+    monkeypatch.setattr(bw, "_out", fake_out)
+    d = Dev()
+    w = bw.BluetoothWatch(d)
+    await w.poll()
+    assert d.published == 1                       # first look
+    await w.poll()
+    assert d.published == 1                       # nothing changed
+    out["list-pcms"] = "/org/bluealsa/hci0/dev_B4_AE_C1_44_02_EA/a2dpsnk/source\n"
+    await w.poll()
+    assert d.published == 2 and w.connected == {"B4:AE:C1:44:02:EA"}

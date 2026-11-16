@@ -90,6 +90,7 @@ class BluetoothWatch:
         self.suppressed = False   # paused for another source: ignore until the stream stops once
         self.volume = None        # last volume the phone set (percent)
         self.address = None       # last phone that played: play/next/previous go there
+        self.connected = None     # phones with an audio connection (BlueALSA PCMs)
 
     def start(self):
         asyncio.ensure_future(self._run())
@@ -104,7 +105,12 @@ class BluetoothWatch:
 
     async def poll(self):
         running = None
-        for path, addr in parse_pcms(await _out("bluealsactl", "list-pcms")):
+        pcms = parse_pcms(await _out("bluealsactl", "list-pcms"))
+        connected = {addr for _, addr in pcms}
+        if connected != self.connected:      # a phone came or went: the app's device list
+            self.connected = connected
+            self.device.publish_bluetooth()
+        for path, addr in pcms:
             info = await _out("bluealsactl", "info", path)
             if parse_running(info):
                 running = (path, addr, info)
