@@ -435,3 +435,20 @@ async def test_level_meter_stream(client, device):
 def test_levels_clean():
     from aroiod.levels import clean
     assert clean([-3.04, float("nan")], [-200, "x"]) == {"peak": [-3.0, -100.0], "rms": [-100.0, -100.0]}
+
+
+async def test_setup_device_choice_writes_boot_config(client, device):
+    """One image for every device: the guide's device + sound card choice decides aroio.txt."""
+    device.world.model = "RaspberryPi"                              # what the real world detects
+    hw = (await (await client.get("/api/v1/audio/hardware")).json())
+    assert hw["driver"] == "auto"                                   # matches the image's neutral aroio.txt
+    # another Raspberry Pi with a self-announcing HAT: same lines as before, no reboot
+    await client.patch("/api/v1/config", json={"hardware": {"model": "RaspberryPi", "dac_driver": "auto"}})
+    assert (await state(client))["device"]["reboot_required"] is False
+    # an Aroio with its DAC: overlay and controls go to the boot partition
+    await client.patch("/api/v1/config", json={"hardware": {"model": "AroioLT", "dac_driver": "aroio"}})
+    s = await state(client)
+    assert s["device"]["reboot_required"] is True and s["device"]["model"] == "AroioLT"
+    lines = device.world.boot_lines
+    assert "dtoverlay=hifiberry-dacplus" in lines
+    assert any(line.startswith("dtoverlay=rotary-encoder") for line in lines)

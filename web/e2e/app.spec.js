@@ -64,12 +64,21 @@ test('Einrichtung beim ersten Start', async ({ page, request }) => {
   await expect(page.getByRole('switch', { name: /^NetJack/ })).toBeVisible();
   await axe(page, 'setup-services');
   await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('heading', { name: 'Welches Gerät hast du?' })).toBeVisible();
+  await expect(page.getByRole('radio', { name: 'Aroio LT' })).toBeChecked();          // the simulator is an Aroio LT
+  await axe(page, 'setup-device');
+  await page.getByRole('button', { name: 'Weiter' }).click();
   await expect(page.getByRole('heading', { name: 'Welche Soundkarte steckt im Aroio?' })).toBeVisible();
-  await expect(page.getByRole('radio', { name: /^Aroio DAC/ })).toBeChecked();         // default
+  await expect(page.getByRole('radio', { name: /^Aroio DAC/ })).toBeChecked();         // preselected for an Aroio
   await axe(page, 'setup-dac');
   await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('heading', { name: 'Fast fertig' })).toBeVisible();      // driver changed: reboot
   await axe(page, 'setup-end');
-  await page.getByRole('button', { name: 'Zum Aroio' }).click();
+  await page.getByRole('button', { name: 'Neu starten und fertig' }).click();
+  await expect(page.getByText('Der Aroio ist wieder da.')).toBeVisible({ timeout: 20000 });
+  const s = await (await api(request, '/state', undefined, 'get')).json();
+  expect(s.device.model).toBe('AroioLT');
+  await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Küche' })).toBeVisible();
 });
 
@@ -256,6 +265,9 @@ test('Einrichtung: anderer DAC verlangt Neustart, Neustart mit Fortschritt', asy
   await page.getByRole('button', { name: 'Weiter' }).click();
   await page.getByRole('button', { name: 'Weiter' }).click();
   await page.getByRole('button', { name: 'Weiter' }).click();
+  await page.getByRole('radio', { name: /^Anderes Gerät/ }).check();
+  await page.getByRole('button', { name: 'Weiter' }).click();
+  await expect(page.getByRole('radio', { name: /^Automatisch/ })).toBeChecked();      // other device: no Aroio DAC
   await page.getByRole('radio', { name: /^Raspberry Pi DAC\+ \/ DAC Pro/ }).check();
   await page.getByRole('button', { name: 'Weiter' }).click();
   await expect(page.getByRole('heading', { name: 'Fast fertig' })).toBeVisible();

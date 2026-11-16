@@ -71,7 +71,7 @@ installiert. Neu beschreiben muss man die SD-Karte nur, wenn sich die Partitioni
   Dann sichert der Job seinen Zwischenstand im Cache und startet selbst den nächsten Teil, der dort weitermacht
   (höchstens 5 Teile). Danach macht der Compiler-Cache die Builds deutlich schneller.
 - **GitHub Actions** (`.github/workflows/release.yml`) baut das System, prüft es (`tools/image-selftest.sh`) und
-  veröffentlicht als Release: SD-Images je DAC-Profil (`sdcard-aroio`, `sdcard-iqaudio`, `sdcard-generic`), das
+  veröffentlicht als Release: ein SD-Image für alle Geräte (Gerät und Soundkarte wählt man beim ersten Start), das
   signierte Update-Paket `aroio-X.Y.Z.raucb` und `SHA256SUMS`. Tests laufen bei jedem Push (`ci.yml`).
 - **Aroios** fragen einmal täglich die GitHub-Releases ab. Updates lassen sich in der App installieren, mit
   „Automatisch aktualisieren“ nachts, wenn keine Musik läuft. Das neue System wird in den freien Slot

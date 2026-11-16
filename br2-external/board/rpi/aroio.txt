@@ -1,0 +1,3 @@
+# DAC driver and device controls. The setup guide in the app writes this file
+# (Aroio SU/EX/LT: Aroio DAC; other devices: the chosen sound card). Until then
+# DAC HATs with EEPROM are detected by the firmware.

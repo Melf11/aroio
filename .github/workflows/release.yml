@@ -4,7 +4,7 @@
 #            0.2.0 = stable release, 0.2.0-beta.1 = pre-release (beta channel)
 #   notes    news shown in the Aroio app, separated by ";"
 #
-# The release gets SD card images (aroio, iqaudio, generic), the signed RAUC bundle and
+# The release gets the SD card image (one for every device), the signed RAUC bundle and
 # SHA256SUMS; Aroios look for new releases here (aroiod/updates.py).
 #
 # GitHub-hosted jobs end after 6 h. A build from scratch (toolchain, kernel, Python …) can
@@ -143,7 +143,7 @@ jobs:
         run: |
           set +e
           timeout --foreground "${BUILD_MINUTES}m" make docker-image AROIO_VERSION=${{ steps.v.outputs.build }} \
-            AROIO_PROFILE=aroio AROIO_PROFILES="iqaudio generic" AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }} \
+            AROIO_BUILD_VOLUME=${{ steps.dir.outputs.volume }} \
             AROIO_RAUC_KEY="$RUNNER_TEMP/rauc-key.pem" AROIO_SSH_PUBKEY= AROIO_CONTAINER=aroio-build-run
           rc=$?
           if [ "$rc" = 124 ]; then
@@ -216,8 +216,7 @@ jobs:
         run: |
           sudo chown -R "$USER" output      # written as root by the build container
           cd output
-          mv aroio-sdcard.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-aroio.img.xz
-          for p in iqaudio generic; do mv aroio-sdcard-$p.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-$p.img.xz; done
+          mv aroio-sdcard.img.xz aroio-${{ steps.v.outputs.build }}-sdcard.img.xz
           rm -f aroio-sdcard.img
           sha256sum aroio-*.img.xz aroio-*.raucb > SHA256SUMS
           cat SHA256SUMS
@@ -239,7 +238,7 @@ jobs:
             echo "## Installation"
             echo
             echo "- **Update:** Aroios mit AroioOS-Neubau finden das Update selbst (Einstellungen › Updates)."
-            echo "- **SD-Karte:** \`sdcard-aroio\` für Aroio SU/EX/LT, \`sdcard-iqaudio\` für IQaudio-DACs, \`sdcard-generic\` für andere. Mit dem Raspberry Pi Imager schreiben."
+            echo "- **SD-Karte:** \`aroio-$V-sdcard.img.xz\` mit dem Raspberry Pi Imager schreiben. Gerät und Soundkarte wählt man beim ersten Start in der App."
             echo
             echo "Privater Neubau ohne Gewähr, siehe README."
           } > notes.md

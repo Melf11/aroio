@@ -144,7 +144,8 @@ SCHEMA = {
     },
     "hardware": {
         "display_rotate": F(int, 0, choices=[0, 90, 180, 270]),
-        "dac_driver": F(str, "aroio", choices=DAC_DRIVER_IDS),
+        # "auto" matches the neutral aroio.txt of the image; the setup guide picks the real one
+        "dac_driver": F(str, "auto", choices=DAC_DRIVER_IDS),
         "model": F(str, "auto", choices=["auto"] + MODEL_IDS),
         # ir_map: {"0x180d": "KEY_MUTE", ...}, validated by check_ir_map()
         "onboard_wifi": F(bool, True),

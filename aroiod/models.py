@@ -68,7 +68,7 @@ def fir_limit(board, rate):
 
 # DAC driver = device tree overlay(s) on the boot partition (aroio.txt). "auto": HATs
 # with EEPROM (Raspberry Pi DAC+/DAC Pro/DigiAMP+, most HiFiBerry) announce themselves.
-# Changing it needs a reboot. Keep "aroio" in sync with br2-external/board/rpi/profiles/aroio.txt.
+# Changing it needs a reboot. The image starts with no driver (= "auto", br2-external/board/rpi/aroio.txt).
 DAC_DRIVERS = [
     {"id": "auto", "label": "Automatisch", "hint": "Die Aufsteckkarte meldet sich selbst (EEPROM).", "lines": []},
     {"id": "aroio", "label": "Aroio DAC", "hint": "Aroio SU, EX, LT",

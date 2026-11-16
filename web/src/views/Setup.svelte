@@ -16,15 +16,25 @@
   let name = $state(app.topics.device?.name || 'Aroio');
   let nameError = $state('');
   let networks = $state(null), ssid = $state(''), pw = $state(''), joinError = $state(''), joining = $state(false);
-  const steps = $derived([{ title: t('Willkommen') }, { title: t('Name') }, { title: t('Netzwerk') }, { title: t('Dienste') }, { title: t('Soundkarte') }, { title: t('Lautsprecher') }]);
+  const steps = $derived([{ title: t('Willkommen') }, { title: t('Name') }, { title: t('Netzwerk') }, { title: t('Dienste') }, { title: t('Gerät') }, { title: t('Soundkarte') }, { title: t('Lautsprecher') }]);
+  // device: Aroio SU/EX/LT (Aroio DAC preselected) or another Raspberry Pi (any sound card)
+  const OTHER = 'RaspberryPi';
+  const aroios = $derived((d?.models || []).filter((m) => m.id.startsWith('Aroio')));
+  let model = $state(app.topics.device?.model?.startsWith('Aroio') ? app.topics.device.model : null);
+  const isAroio = $derived(!!model?.startsWith('Aroio'));
   let hw = $state(null), driver = $state(null);
   async function loadHw() { hw = await api.get('/audio/hardware'); driver ??= hw.driver; }
-  $effect(() => { if (step === 4 && !hw) loadHw(); });
+  $effect(() => { if (step >= 4 && step <= 5 && !hw) loadHw(); });
+  function chooseModel() {
+    if (isAroio) driver = 'aroio';
+    else if (!driver || driver === 'aroio') driver = 'auto';
+    goto(5);
+  }
   async function saveDriver() {
     try {
-      await config({ hardware: { dac_driver: driver } });
+      await config({ hardware: { model, dac_driver: driver } });
       hw = await api.get('/audio/hardware');
-      goto(5);
+      goto(6);
     } catch (e) { toast(e.message, 'danger'); }
   }
   const needsReboot = $derived(!!d?.reboot_required);
@@ -127,9 +137,34 @@
       <button class="btn primary block" type="button" onclick={() => goto(4)}>{t('Weiter')}</button>
     </section>
   {:else if step === 4}
+    <form class="stack" onsubmit={(e) => { e.preventDefault(); chooseModel(); }}>
+      <h1>{t('Welches Gerät hast du?')}</h1>
+      <p class="muted">{t('Bei einem Aroio von ABACUS wähle dein Modell. Für einen eigenen Raspberry Pi wähle „Anderes Gerät“.')}</p>
+      <fieldset>
+        <legend class="sr-only">{t('Gerät')}</legend>
+        <ul class="list">
+          {#each aroios as m (m.id)}
+            <li><label class="opt">
+              <input type="radio" name="model" value={m.id} bind:group={model} />
+              <span class="text"><span class="name">{m.label}</span></span>
+            </label></li>
+          {/each}
+          <li><label class="opt">
+            <input type="radio" name="model" value={OTHER} bind:group={model} />
+            <span class="text"><span class="name">{t('Anderes Gerät')}</span><span class="muted small">{t('Eigener Raspberry Pi mit Soundkarte')}</span></span>
+          </label></li>
+        </ul>
+      </fieldset>
+      <button class="btn primary block" type="submit" disabled={!model}>{t('Weiter')}</button>
+    </form>
+  {:else if step === 5}
     <form class="stack" onsubmit={(e) => { e.preventDefault(); saveDriver(); }}>
       <h1>{t('Welche Soundkarte steckt im Aroio?')}</h1>
-      <p class="muted">{t('Bei einem Aroio von ABACUS ist es der Aroio DAC. Bei einem eigenen Raspberry Pi wähle die Aufsteckkarte, die du verwendest.')}</p>
+      {#if isAroio}
+        <p class="muted">{t('Im Aroio steckt der Aroio DAC, er ist schon ausgewählt. Wähle nur etwas anderes, wenn du eine andere Soundkarte eingebaut hast.')}</p>
+      {:else}
+        <p class="muted">{t('Wähle die Aufsteckkarte, die du verwendest. „Automatisch“ passt für Karten, die sich selbst melden, zum Beispiel den Raspberry Pi DAC+.')}</p>
+      {/if}
       {#if hw}
         <fieldset>
           <legend class="sr-only">{t('Soundkarte')}</legend>
@@ -145,7 +180,7 @@
       {:else}<p class="muted" role="status">{t('Lädt …')}</p>{/if}
       <button class="btn primary block" type="submit" disabled={!driver}>{t('Weiter')}</button>
     </form>
-  {:else if step === 5}
+  {:else if step === 6}
     <section class="stack">
       {#if needsReboot}
         <h1>{t('Fast fertig')}</h1>

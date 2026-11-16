@@ -6,9 +6,7 @@
 #   make docker-image  SD card image, built in Docker (macOS/Linux). Result: output/aroio-sdcard.img
 #   make image         same without Docker (Linux host with a case-sensitive file system)
 #
-# Options: AROIO_PROFILE=generic|iqaudio|aroio (DAC overlays, see br2-external/board/rpi/profiles)
-#          AROIO_PROFILES="iqaudio generic"  additional SD card images aroio-sdcard-<profile>.img.xz
-#          AROIO_VERSION=x.y.z               release builds (tag v x.y.z), "dev" otherwise
+# Options: AROIO_VERSION=x.y.z               release builds (tag v x.y.z), "dev" otherwise
 #          AROIO_RAUC_KEY=/path/key.pem      release signing key (CI); the certificate is in the repo
 #          AROIO_BUILD_VOLUME=aroio-build    Docker volume or absolute host directory for the Buildroot output
 
@@ -17,16 +15,14 @@ BR_DIR ?= $(CURDIR)/buildroot
 OUT ?= $(CURDIR)/output/build
 BR2_DL_DIR ?= $(CURDIR)/output/dl
 COPY_TO ?= $(CURDIR)/output
-AROIO_PROFILE ?= aroio
 AROIO_VERSION ?= dev
-AROIO_PROFILES ?=
 AROIO_BUILD_VOLUME ?= aroio-build
 AROIO_RAUC_KEY ?=
 # name of the build container (CI stops it by name when a run has to hand over)
 AROIO_CONTAINER ?= aroio-build-run
 # development images only: your public SSH key for root login (never in release builds)
 AROIO_SSH_PUBKEY ?= $(if $(filter dev,$(AROIO_VERSION)),$(shell cat $(HOME)/.ssh/id_ed25519.pub $(HOME)/.ssh/id_rsa.pub 2>/dev/null | head -1))
-export BR2_DL_DIR AROIO_PROFILE AROIO_PROFILES AROIO_VERSION AROIO_SSH_PUBKEY
+export BR2_DL_DIR AROIO_VERSION AROIO_SSH_PUBKEY
 
 .PHONY: test e2e web buildroot image docker-image selftest
 
@@ -68,8 +64,6 @@ image: buildroot
 	cp $(OUT)/images/sdcard.img $(COPY_TO)/aroio-sdcard.img
 	# download size: xz shrinks the empty space in the partitions to almost nothing
 	xz -T0 -6 -k -f $(COPY_TO)/aroio-sdcard.img
-	for p in $(AROIO_PROFILES); do \
-		cp $(OUT)/images/sdcard-$$p.img $(COPY_TO)/aroio-sdcard-$$p.img && xz -T0 -6 -f $(COPY_TO)/aroio-sdcard-$$p.img; done
 	rm -f $(COPY_TO)/aroio-*.raucb
 	cp $(OUT)/images/aroio-*.raucb $(COPY_TO)/ 2>/dev/null || true
 	@echo "Fertig: $(COPY_TO)/aroio-sdcard.img"
@@ -82,7 +76,7 @@ RAUC_KEY_ARGS = $(if $(AROIO_RAUC_KEY),-v $(abspath $(AROIO_RAUC_KEY)):/keys/key
 docker-image: web
 	docker build -t aroio-build docker
 	docker run --rm --name $(AROIO_CONTAINER) -v $(CURDIR):/work -v $(AROIO_BUILD_VOLUME):/build -w /work $(RAUC_KEY_ARGS) \
-		-e AROIO_PROFILE=$(AROIO_PROFILE) -e AROIO_PROFILES="$(AROIO_PROFILES)" -e AROIO_VERSION=$(AROIO_VERSION) \
+		-e AROIO_VERSION=$(AROIO_VERSION) \
 		-e AROIO_SSH_PUBKEY="$(AROIO_SSH_PUBKEY)" aroio-build \
 		make image BR_DIR=/build/buildroot OUT=/build/out BR2_DL_DIR=/build/dl COPY_TO=/work/output
 

@@ -1,5 +1,5 @@
-# AroioOS. Model-specific overlays live in aroio.txt (written from board/rpi/profiles/ at build time,
-# later by aroiod after model detection).
+# AroioOS. Device-specific overlays (DAC, controls) live in aroio.txt, written by aroiod when the
+# device and sound card are chosen in the setup guide.
 # os_prefix selects the system slot (A/B): kernel, device trees, overlays and cmdline.txt come
 # from slot-a/ or slot-b/. Only /usr/lib/aroio/rauc-tryboot changes this line.
 [all]

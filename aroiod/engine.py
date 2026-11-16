@@ -695,8 +695,8 @@ class Device:
         if "network" in changed:
             self.world.network_apply(after["network"])
             self.publish_network()
-        boot_keys = ("dac_driver", "model", "display_rotate", "ir_enabled")
-        if "hardware" in changed and any(after["hardware"][k] != before["hardware"][k] for k in boot_keys):
+        # aroio.txt only when its lines change (e.g. model "auto" -> "RaspberryPi" does not)
+        if "hardware" in changed and self._boot_lines(before["hardware"]) != self._boot_lines(after["hardware"]):
             self.write_boot_config()
             self.reboot_required = True
         if "hardware" in changed or "device" in changed or "setup" in changed:
@@ -895,10 +895,12 @@ class Device:
             else self.data / "filters"
 
     # ── boot configuration (aroio.txt): driver, model controls, display rotation ──
+    def _boot_lines(self, hw):
+        model = hw["model"] if hw["model"] in models.MODELS else self.world.model
+        return models.boot_lines(hw["dac_driver"], model, hw["display_rotate"], ir=hw["ir_enabled"])
+
     def write_boot_config(self):
-        hw = self.config.data["hardware"]
-        self.world.write_boot_config(models.boot_lines(hw["dac_driver"], self.model_id, hw["display_rotate"],
-                                                       ir=hw["ir_enabled"]))
+        self.world.write_boot_config(self._boot_lines(self.config.data["hardware"]))
 
     # ── room measurement mode ────────────────────────────────────────────────
     def begin_measurement(self):

@@ -1,2 +1,0 @@
-# Profile "generic": DAC HATs with EEPROM (e.g. Raspberry Pi DAC+/DAC Pro/DigiAMP+, formerly IQaudio)
-# are detected by the firmware; nothing to force here.
