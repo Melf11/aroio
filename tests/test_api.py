@@ -452,3 +452,11 @@ async def test_setup_device_choice_writes_boot_config(client, device):
     lines = device.world.boot_lines
     assert "dtoverlay=hifiberry-dacplus" in lines
     assert any(line.startswith("dtoverlay=rotary-encoder") for line in lines)
+
+
+async def test_sound_card_missing_notice(client, device):
+    """'Automatic' with a HAT that has no readable EEPROM: only the loopback is there."""
+    assert (await state(client))["device"]["sound_card_missing"] is False
+    device.world.audio_outputs = lambda: [{"id": "hw:CARD=vc4hdmi0,DEV=0", "kind": "hdmi", "name": "HDMI", "card": "vc4hdmi0"}]
+    device.publish_device()
+    assert (await state(client))["device"]["sound_card_missing"] is True

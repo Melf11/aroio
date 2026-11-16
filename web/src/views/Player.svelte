@@ -1,5 +1,5 @@
 <script>
-  import { Play, Pause, Square, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ListMusic, ChevronDown, BadgeCheck, AudioWaveform, Radio, Smartphone } from '@lucide/svelte';
+  import { Play, Pause, Square, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ListMusic, ChevronDown, BadgeCheck, AudioWaveform, Radio, Smartphone, TriangleAlert } from '@lucide/svelte';
   import Cover from '../components/Cover.svelte';
   import VolumeSlider from '../components/VolumeSlider.svelte';
   import QueueList from '../components/QueueList.svelte';
@@ -34,6 +34,9 @@
 
 <div class="player-page" class:empty={!p?.track}>
   <h1 class="sr-only">{t('Wiedergabe')}</h1>
+  {#if d?.sound_card_missing}
+    <p class="notice warn card-missing"><TriangleAlert size={20} aria-hidden="true" /><span>{t('Keine Soundkarte gefunden. Manche Karten melden sich nicht selbst: Wähle deine unter')} <a href="/einstellungen/ton">{t('Einstellungen › Ton')}</a>.</span></p>
+  {/if}
 
   {#if !p?.track}
     <section class="page idle">
@@ -204,4 +207,6 @@
     .queue-link { display: none; }
   }
   @media (min-width: 900px) and (max-height: 820px) { .art { width: min(100%, 38vh); } }
+  .card-missing { margin: 12px 16px 0; }
+  .card-missing a { color: inherit; font-weight: 600; }
 </style>

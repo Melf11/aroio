@@ -175,6 +175,7 @@ class Device:
             "fixed_level": self.fixed_level, "has_input": self.model["has_input"] or c["sources"]["input"]["enabled"],
             "version": self.update["current"], "setup_completed": c["setup"]["completed"],
             "reboot_required": self.reboot_required,
+            "sound_card_missing": self.sound_card_missing(),
             "simulated": self.world.simulated,
         })
 
@@ -895,6 +896,13 @@ class Device:
             else self.data / "filters"
 
     # ── boot configuration (aroio.txt): driver, model controls, display rotation ──
+    def sound_card_missing(self):
+        """No card to play on (e.g. "automatic" chosen, but the HAT has no readable EEPROM).
+        HDMI does not count unless chosen on purpose ("onboard")."""
+        if self.config.get("hardware.dac_driver") == "onboard":
+            return False
+        return not any(o["kind"] != "hdmi" for o in self.world.audio_outputs())
+
     def _boot_lines(self, hw):
         model = hw["model"] if hw["model"] in models.MODELS else self.world.model
         return models.boot_lines(hw["dac_driver"], model, hw["display_rotate"], ir=hw["ir_enabled"])

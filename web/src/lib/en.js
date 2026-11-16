@@ -589,6 +589,8 @@ export default {
   'Soundkarte': 'Sound card',
   'Welche Soundkarte steckt im Aroio?': 'Which sound card is in the Aroio?',
   'Gerät': 'Device',
+  'Keine Soundkarte gefunden. Manche Karten melden sich nicht selbst: Wähle deine unter': 'No sound card found. Some cards do not identify themselves: choose yours under',
+  'Einstellungen › Ton': 'Settings › Sound',
   'Welches Gerät hast du?': 'Which device do you have?',
   'Bei einem Aroio von ABACUS wähle dein Modell. Für einen eigenen Raspberry Pi wähle „Anderes Gerät“.': 'For an Aroio from ABACUS choose your model. For your own Raspberry Pi choose “Other device”.',
   'Anderes Gerät': 'Other device',

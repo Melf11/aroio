@@ -1,1 +1,2 @@
 aroio -1 aroio -1 * /var/lib/aroio - audio,bluetooth Aroio services
+pulse -1 pulse -1 * /run/pulse - audio PulseAudio for Spotify (aroio-pulse.service)
