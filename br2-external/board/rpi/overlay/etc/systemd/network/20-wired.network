@@ -7,9 +7,17 @@ Name=eth* en*
 DHCP=yes
 IPv6AcceptRA=yes
 LinkLocalAddressing=yes
+# one fixed identity in the network, everything from the MAC address (secured company networks
+# must see the same device after every restart): no addresses from the machine-id, no privacy
+# addresses
+IPv6LinkLocalAddressGenerationMode=eui64
+IPv6PrivacyExtensions=no
 
 [DHCPv4]
 UseHostname=no
 # identify by the MAC address: the machine-id (default DUID) is new on every boot of the
 # read-only system, so the DHCP server would hand out a new address after each restart
 ClientIdentifier=mac
+
+[IPv6AcceptRA]
+Token=eui64
