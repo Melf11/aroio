@@ -460,3 +460,14 @@ async def test_sound_card_missing_notice(client, device):
     device.world.audio_outputs = lambda: [{"id": "hw:CARD=vc4hdmi0,DEV=0", "kind": "hdmi", "name": "HDMI", "card": "vc4hdmi0"}]
     device.publish_device()
     assert (await state(client))["device"]["sound_card_missing"] is True
+
+
+async def test_network_topic_follows_address_changes(client, device):
+    """DHCP answers after aroiod started: the app must see the new address without a restart."""
+    before = (await state(client))["network"]
+    status = dict(device.world.network_status(device.config.data))
+    status["lan"] = dict(status["lan"], connected=True, address="172.21.24.197")
+    device.world.network_status = lambda cfg: dict(status)
+    await device.netsetup.tick()
+    after = (await state(client))["network"]
+    assert after["lan"]["address"] == "172.21.24.197" and after != before

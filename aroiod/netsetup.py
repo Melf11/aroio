@@ -60,6 +60,8 @@ class NetSetup:
         if self._busy.locked():
             return
         links = self.world.links()
+        # addresses come and go (DHCP after boot, cable plugged in): keep the app up to date
+        self.device.publish_network(only_changed=True)
         mode = self.device.config.get("network.hotspot")
         if self.active:
             if links["lan"] or mode == "off":

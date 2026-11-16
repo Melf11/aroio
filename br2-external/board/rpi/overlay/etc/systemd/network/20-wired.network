@@ -6,7 +6,8 @@ Name=eth* en*
 [Network]
 DHCP=yes
 IPv6AcceptRA=yes
-LinkLocalAddressing=yes
+# IPv6 link-local only: no 169.254.x.x address while DHCP is still running
+LinkLocalAddressing=ipv6
 # one fixed identity in the network, everything from the MAC address (secured company networks
 # must see the same device after every restart): no addresses from the machine-id, no privacy
 # addresses

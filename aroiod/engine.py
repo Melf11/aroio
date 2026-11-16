@@ -258,10 +258,13 @@ class Device:
             "netjack": dict(c["sources"]["netjack"]),
         })
 
-    def publish_network(self):
+    def publish_network(self, only_changed=False):
         status = self.world.network_status(self.config.data)
         if self.netsetup:
             status.update(self.netsetup.status())
+        if only_changed and status == getattr(self, "_network_published", None):
+            return
+        self._network_published = status
         self.hub.publish("network", status)
 
     def publish_bluetooth(self):
