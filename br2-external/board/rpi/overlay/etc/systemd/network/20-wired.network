@@ -10,3 +10,6 @@ LinkLocalAddressing=yes
 
 [DHCPv4]
 UseHostname=no
+# identify by the MAC address: the machine-id (default DUID) is new on every boot of the
+# read-only system, so the DHCP server would hand out a new address after each restart
+ClientIdentifier=mac
