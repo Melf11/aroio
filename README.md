@@ -72,14 +72,21 @@ installiert. Neu beschreiben muss man die SD-Karte nur, wenn sich die Partitioni
 
 ## Releases und Updates
 
-- **Version veröffentlichen:** von Hand auf GitHub unter *Actions › Image und Release › Run workflow*.
-  Eingaben: Version (`0.2.0` = stabil, `0.2.0-beta.1` = Pre-Release für den Beta-Kanal, leer = Testbuild ohne
-  Release) und die Neuerungen, getrennt mit `;` (erscheinen in der App). Der Tag `vX.Y.Z` entsteht mit dem Release.
+- **Bauen, testen, veröffentlichen:** gebaut wird einmal, veröffentlicht werden genau die getesteten Dateien.
+  1. *Actions › Image bauen › Run workflow* mit Version (`0.2.0` = stabil, `0.2.0-beta.1` = Pre-Release für den
+     Beta-Kanal). Die Version steckt im Image, darum wird sie hier gewählt. Leer = Testbuild `ci-<commit>`, der nie
+     veröffentlicht werden kann. Ergebnis: Artifact `aroio-<version>` am Lauf (30 Tage), kein Release.
+  2. Das SD-Image aus dem Artifact testen.
+  3. *Actions › Release veröffentlichen › Run workflow* mit dem Link zum Lauf aus Schritt 1 und den Neuerungen,
+     getrennt mit `;` (erscheinen in der App). Lädt genau diese Dateien hoch, ohne neu zu bauen (etwa 1 Minute).
+     Der Tag `vX.Y.Z` entsteht dabei.
+
+  Wer nicht testen will: in Schritt 1 „Danach gleich als Release veröffentlichen“ anhaken.
 - **Lange Builds:** GitHubs Runner beenden einen Job nach 6 Stunden. Ein Build von Grund auf kann länger dauern:
   Dann sichert der Job seinen Zwischenstand im Cache und startet selbst den nächsten Teil, der dort weitermacht
   (höchstens 5 Teile). Danach macht der Compiler-Cache die Builds deutlich schneller.
-- **GitHub Actions** (`.github/workflows/release.yml`) baut das System, prüft es (`tools/image-selftest.sh`) und
-  veröffentlicht als Release: ein SD-Image für alle Geräte (Gerät und Soundkarte wählt man beim ersten Start), das
+- **GitHub Actions:** `.github/workflows/release.yml` baut das System und prüft es (`tools/image-selftest.sh`),
+  `publish.yml` veröffentlicht einen fertigen Build als Release: ein SD-Image für alle Geräte (Gerät und Soundkarte wählt man beim ersten Start), das
   signierte Update-Paket `aroio-X.Y.Z.raucb` und `SHA256SUMS`. Tests laufen bei jedem Push (`ci.yml`).
 - **Aroios** fragen einmal täglich die GitHub-Releases ab. Updates lassen sich in der App installieren, mit
   „Automatisch aktualisieren“ nachts, wenn keine Musik läuft. Das neue System wird in den freien Slot

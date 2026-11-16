@@ -1,11 +1,15 @@
-# Image and release, started by hand: Actions › "Image und Release" › Run workflow.
+# Image build, started by hand: Actions › "Image bauen" › Run workflow.
 #
-#   version  empty = test build (images as a workflow artifact, no release)
-#            0.2.0 = stable release, 0.2.0-beta.1 = pre-release (beta channel)
-#   notes    news shown in the Aroio app, separated by ";"
+#   version          baked into the image and the update bundle, so it is chosen here:
+#                    0.2.0 = stable, 0.2.0-beta.1 = pre-release (beta channel);
+#                    empty = test build ci-<commit> (can never become a release)
+#   veroeffentlichen publish as a release right away (otherwise: test the artifact, then
+#                    publish exactly these files with "Release veröffentlichen", publish.yml)
+#   notes            news shown in the Aroio app, separated by ";" (only when publishing here)
 #
-# The release gets the SD card image (one for every device), the signed RAUC bundle and
-# SHA256SUMS; Aroios look for new releases here (aroiod/updates.py).
+# Every finished build leaves the artifact aroio-<version> (30 days): SD card image (one for
+# every device), signed RAUC bundle, SHA256SUMS and release.json. Aroios look for new
+# releases here (aroiod/updates.py).
 #
 # GitHub-hosted jobs end after 6 h. A build from scratch (toolchain, kernel, Python …) can
 # take longer: then the job stops the build in time, shrinks the Buildroot output
@@ -15,16 +19,20 @@
 # Runner: GitHub-hosted by default. A self-hosted runner (repository variable AROIO_RUNNER,
 # e.g. ["self-hosted","aroio"], Docker needed) keeps the output between builds.
 # Secret RAUC_KEY: release signing key (PEM); certificate br2-external/board/rpi/rauc/release-cert.pem.
-name: Image und Release
+name: Image bauen
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version ohne v (z. B. 0.2.0 oder 0.2.0-beta.1). Leer = Testbuild ohne Release"
+        description: "Version ohne v (z. B. 0.2.0 oder 0.2.0-beta.1). Leer = Testbuild, der nie veröffentlicht werden kann"
         required: false
+      veroeffentlichen:
+        description: "Danach gleich als Release veröffentlichen (sonst später mit „Release veröffentlichen“)"
+        type: boolean
+        default: false
       notes:
-        description: "Neuerungen für die App, getrennt mit ; (nur bei Release)"
+        description: "Neuerungen für die App, getrennt mit ; (nur wenn gleich veröffentlicht wird)"
         required: false
       sha:
         description: "intern: Commit (Fortsetzung)"
@@ -180,11 +188,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
+          PUBLISH: ${{ inputs.veroeffentlichen }}
           NOTES: ${{ inputs.notes }}
           NEXT: ${{ steps.v.outputs.next }}
         run: |
-          gh workflow run release.yml --ref "$GITHUB_REF_NAME" \
-            -f version="$VERSION" -f notes="$NOTES" -f sha="${{ steps.v.outputs.sha }}" -f part="$NEXT"
+          gh workflow run release.yml --ref "$GITHUB_REF_NAME" -f version="$VERSION" -f veroeffentlichen="$PUBLISH" \
+            -f notes="$NOTES" -f sha="${{ steps.v.outputs.sha }}" -f part="$NEXT"
           echo "Build wird in Teil $NEXT fortgesetzt." >> "$GITHUB_STEP_SUMMARY"
 
       # ── finished ──
@@ -220,36 +229,32 @@ jobs:
           rm -f aroio-sdcard.img
           sha256sum aroio-*.img.xz aroio-*.raucb > SHA256SUMS
           cat SHA256SUMS
+          # what "Release veröffentlichen" needs to publish exactly this build
+          printf '{"version": "%s", "sha": "%s", "prerelease": %s, "run": %s}\n' "${{ steps.v.outputs.version }}" \
+            "${{ steps.v.outputs.sha }}" "${{ steps.v.outputs.prerelease }}" "${{ github.run_id }}" > release.json
+          cat release.json
+
+      - name: Build aufheben
+        if: steps.build.outputs.handover != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: aroio-${{ steps.v.outputs.build }}
+          path: |
+            output/aroio-*
+            output/SHA256SUMS
+            output/release.json
+          retention-days: 30
 
       - name: Release
-        if: steps.build.outputs.handover != 'true' && steps.v.outputs.version != ''
+        if: steps.build.outputs.handover != 'true' && steps.v.outputs.version != '' && inputs.veroeffentlichen
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.notes }}
         run: |
           V=${{ steps.v.outputs.version }}
           PRE=$([ "${{ steps.v.outputs.prerelease }}" = true ] && echo --prerelease || true)
-          {
-            echo "## Neu in $V"
-            echo
-            # bullet lines become the notes in the Aroio app (aroiod/updates.py)
-            printf '%s' "$NOTES" | tr ';' '\n' | sed 's/^ *//; s/ *$//' | sed -n '/./s/^/- /p'
-            echo
-            echo "## Installation"
-            echo
-            echo "- **Update:** Aroios mit AroioOS-Neubau finden das Update selbst (Einstellungen › Updates)."
-            echo "- **SD-Karte:** \`aroio-$V-sdcard.img.xz\` mit dem Raspberry Pi Imager schreiben. Gerät und Soundkarte wählt man beim ersten Start in der App."
-            echo
-            echo "Privater Neubau ohne Gewähr, siehe README."
-          } > notes.md
+          tools/release-notes.sh "$V" "$NOTES" > notes.md
           cat notes.md
           gh release create "v$V" output/aroio-*.img.xz output/aroio-*.raucb output/SHA256SUMS \
             --target "${{ steps.v.outputs.sha }}" --title "AroioOS $V" --notes-file notes.md $PRE
 
-      - name: Testbuild aufheben
-        if: steps.build.outputs.handover != 'true' && steps.v.outputs.version == ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: aroio-${{ steps.v.outputs.build }}
-          path: output/aroio-*
-          retention-days: 7
