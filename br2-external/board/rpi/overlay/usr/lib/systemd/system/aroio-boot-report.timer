@@ -1,8 +1,9 @@
 [Unit]
-Description=Diagnosis report 90 seconds after boot (development images)
+Description=Diagnosis report 90 seconds after boot, then every 2 minutes (development images)
 
 [Timer]
 OnBootSec=90s
+OnUnitActiveSec=2min
 
 [Install]
 WantedBy=timers.target

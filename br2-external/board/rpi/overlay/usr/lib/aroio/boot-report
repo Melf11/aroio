@@ -10,6 +10,12 @@ OUT="$MNT/aroio-diagnose.txt"
     echo "== uptime"; uptime
     echo "== systemd: fehlgeschlagene Dienste"; systemctl --failed --no-legend
     echo "== Netzwerk"; ip addr; echo; iw dev 2>&1
+    echo "== Routen"; ip route; ip -6 route
+    echo "== Nachbarn (ARP): wer zuletzt mit dem Aroio gesprochen hat"; ip neigh
+    echo "== Paketzähler Kabel (RX = empfangen, TX = gesendet)"; ip -s link show end0 2>&1; ip -s link show eth0 2>/dev/null
+    echo "== offene Ports"; ss -ltnu 2>&1 | head -30
+    echo "== Firewall"; nft list ruleset 2>&1 | head -30; iptables -S 2>&1 | head -10
+    echo "== systemd-networkd"; journalctl -b -u systemd-networkd --no-pager | tail -40
     echo "== rfkill"; cat /sys/class/rfkill/*/name /sys/class/rfkill/*/soft /sys/class/rfkill/*/hard 2>&1
     echo "== Soundkarten"; cat /proc/asound/cards
     echo "== Module"; lsmod
