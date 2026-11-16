@@ -214,6 +214,7 @@ jobs:
       - name: Dateien
         if: steps.build.outputs.handover != 'true'
         run: |
+          sudo chown -R "$USER" output      # written as root by the build container
           cd output
           mv aroio-sdcard.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-aroio.img.xz
           for p in iqaudio generic; do mv aroio-sdcard-$p.img.xz aroio-${{ steps.v.outputs.build }}-sdcard-$p.img.xz; done
