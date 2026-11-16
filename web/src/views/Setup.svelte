@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   // First start: language, name, network, services, speaker test. Each step one task.
   import { Cable, CircleCheck, FileUp, Wifi } from '@lucide/svelte';
   import Stepper from '../components/Stepper.svelte';
@@ -65,7 +66,7 @@
 </script>
 
 <div class="page wiz">
-  <div class="logo"><img src="/icons/logo.svg" alt="" width="40" height="40" /><span>Aroio</span></div>
+  <div class="logo"><img src={logoUrl} alt="" width="40" height="40" /><span>Aroio</span></div>
   <Stepper {steps} current={step} />
 
   {#if step === 0}

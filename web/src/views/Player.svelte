@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   import { Play, Pause, Square, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, ListMusic, ChevronDown, BadgeCheck, AudioWaveform, Radio, Smartphone, TriangleAlert } from '@lucide/svelte';
   import Cover from '../components/Cover.svelte';
   import VolumeSlider from '../components/VolumeSlider.svelte';
@@ -41,7 +42,7 @@
   {#if !p?.track}
     <section class="page idle">
       <div class="hello">
-        <img src="/icons/logo.svg" alt="" width="64" height="64" />
+        <img src={logoUrl} alt="" width="64" height="64" />
         <h2>{d?.name}</h2>
         <p class="muted">{t('Gerade läuft nichts.')}</p>
       </div>

@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   // Opens by itself in the phone's captive portal window when it joins the
   // setup hotspot. One task per screen: choose WLAN, password, then what happens next.
   import { Wifi, Lock, CircleCheck, TriangleAlert, LoaderCircle, Eye, EyeOff, Copy } from '@lucide/svelte';
@@ -41,7 +42,7 @@
 </script>
 
 <div class="page wiz">
-  <div class="logo"><img src="/icons/logo.svg" alt="" width="40" height="40" /><span>Aroio</span></div>
+  <div class="logo"><img src={logoUrl} alt="" width="40" height="40" /><span>Aroio</span></div>
   {#if step < 3}<Stepper steps={[{ title: t('WLAN wählen') }, { title: t('Passwort') }, { title: t('Verbinden') }]} current={step} />{/if}
 
   {#if step === 0}

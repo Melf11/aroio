@@ -1,0 +1,47 @@
+# Demo of the app on GitHub Pages (https://melf11.github.io/aroio/): the app with the
+# simulated Aroio (aroiod --sim) running as Python in the browser (Pyodide), see
+# tools/build-demo.sh and web/src/demo/. Rebuilt when the app or aroiod change.
+name: Demo (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "aroiod/**", "tools/build-demo.sh", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - uses: actions/configure-pages@v6
+      - run: tools/build-demo.sh
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: web/dist-demo
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

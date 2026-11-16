@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from './lib/assets.js';
   import { WifiOff } from '@lucide/svelte';
   import Nav from './components/Nav.svelte';
   import MiniPlayer from './components/MiniPlayer.svelte';
@@ -76,7 +77,7 @@
   <main id="main" class="flow"><Login /></main>
 {:else if !app.everConnected}
   <div class="splash" role="status">
-    <img src="/icons/logo.svg" alt="" width="72" height="72" />
+    <img src={logoUrl} alt="" width="72" height="72" />
     <p>{t('Verbinde mit dem Aroio …')}</p>
   </div>
 {:else if route.path === '/einrichtung'}

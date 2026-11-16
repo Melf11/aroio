@@ -20,6 +20,10 @@ Raspberry Pi 3B/3B+, 4 und 5, alle Aroio-Modelle (SU, EX, LT) und AroioOS auf ei
 
 Plan, Entscheidungen und offene Fragen: [docs/NEUBAU-PLAN.md](docs/NEUBAU-PLAN.md).
 
+**Demo im Browser:** https://melf11.github.io/aroio/ zeigt die App mit einem simulierten Aroio, ohne Gerät und ohne
+Installation. Der Simulator (aroiod) läuft dort als Python direkt im Browser
+([Pyodide](https://pyodide.org)), nichts wird an einen Server geschickt. `?neu` startet mit dem Einrichtungsassistenten.
+
 ## Entwickeln ohne Raspberry Pi
 
 ```bash
@@ -43,6 +47,10 @@ Plan, Entscheidungen und offene Fragen: [docs/NEUBAU-PLAN.md](docs/NEUBAU-PLAN.m
 - **WLAN-Einrichtung:** Ohne Kabel und WLAN öffnet der Aroio den Hotspot „Aroio-Einrichtung-XXXX“. Handys zeigen
   beim Verbinden automatisch das Einrichtungsfenster (Captive Portal). Im Simulator: „Erststart ohne Netz“, dann
   „Handy verbindet sich mit dem Hotspot“.
+
+- **Demo für GitHub Pages:** `tools/build-demo.sh` baut die App mit dem Simulator im Browser nach `web/dist-demo`
+  (`.github/workflows/pages.yml` veröffentlicht sie bei jedem Push, der `web/` oder `aroiod/` ändert). Lokal ansehen:
+  `web/dist-demo` unter dem Pfad `/aroio/` ausliefern.
 
 Voraussetzungen: Python 3.11+, Node 20+. `./dev.sh` richtet `.venv` und `web/node_modules` beim ersten Start ein.
 

@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   // Taking over an old Aroio: review what will be imported, apply, check, done.
   import { CircleCheck, TriangleAlert, Info, MinusCircle } from '@lucide/svelte';
   import Stepper from '../components/Stepper.svelte';
@@ -24,7 +25,7 @@
 </script>
 
 <div class="page wiz">
-  <div class="logo"><img src="/icons/logo.svg" alt="" width="40" height="40" /><span>Aroio</span></div>
+  <div class="logo"><img src={logoUrl} alt="" width="40" height="40" /><span>Aroio</span></div>
   <Stepper steps={[{ title: t('Übersicht') }, { title: t('Prüfen') }]} current={step} />
 
   {#if step === 0}

@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   // Restart of the Aroio: phases and a progress estimate (from the last measured
   // restart), reconnects by itself; reloads the app when the version changed.
   import { CircleCheck } from '@lucide/svelte';
@@ -19,7 +20,7 @@
 </script>
 
 <div class="reboot" role="alertdialog" aria-modal="true" aria-labelledby="rb-t" aria-describedby="rb-s">
-  <img src="/icons/logo.svg" alt="" width="64" height="64" />
+  <img src={logoUrl} alt="" width="64" height="64" />
   <h2 id="rb-t">{phase === 'back' ? t('Wieder da') : t('Der Aroio startet neu')}</h2>
   <div class="bar" role="progressbar" aria-label={t('Fortschritt des Neustarts')} aria-valuemin="0" aria-valuemax="100" aria-valuenow={pct}>
     <i style="width:{pct}%"></i>

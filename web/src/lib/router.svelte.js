@@ -4,15 +4,21 @@
 
 import { tick } from 'svelte';
 
-export const route = $state({ path: location.pathname, query: new URLSearchParams(location.search), depth: 0 });
+// base path of the build ("" on the Aroio, "/aroio" for the demo on GitHub Pages);
+// app paths ("/klang") never contain it
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+const appPath = (p) => (BASE && (p === BASE || p.startsWith(BASE + '/')) ? p.slice(BASE.length) || '/' : p);
+
+export const route = $state({ path: appPath(location.pathname), query: new URLSearchParams(location.search), depth: 0 });
 
 function update() {
-  route.path = location.pathname;
+  route.path = appPath(location.pathname);
   route.query = new URLSearchParams(location.search);
 }
 
 export async function go(to, { replace = false, focus = true } = {}) {
-  const url = new URL(to, location.href);
+  const url = new URL(to, location.origin + BASE + route.path);
+  url.pathname = BASE + appPath(url.pathname);
   if (url.pathname + url.search === location.pathname + location.search) return;
   if (replace) history.replaceState({ depth: route.depth }, '', url);
   else history.pushState({ depth: ++route.depth }, '', url);
@@ -49,7 +55,7 @@ export function startRouter() {
     const url = new URL(a.href);
     if (url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
     e.preventDefault();
-    go(url.pathname + url.search);
+    go(appPath(url.pathname) + url.search);
   });
 }
 

@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   import { House, Library, AudioWaveform, Settings } from '@lucide/svelte';
   import { isActive } from '../lib/router.svelte.js';
   import { t } from '../lib/i18n.svelte.js';
@@ -15,7 +16,7 @@
 
 <nav class={variant} aria-label={t('Hauptnavigation')}>
   {#if variant === 'side'}
-    <div class="brand"><img src="/icons/logo.svg" alt="" width="32" height="32" /><span>Aroio</span></div>
+    <div class="brand"><img src={logoUrl} alt="" width="32" height="32" /><span>Aroio</span></div>
   {/if}
   <ul>
     {#each items as it}

@@ -1,4 +1,5 @@
 <script>
+  import { logoUrl } from '../lib/assets.js';
   import { Lock } from '@lucide/svelte';
   import { api } from '../lib/api.js';
   import { connect } from '../lib/state.svelte.js';
@@ -14,7 +15,7 @@
 </script>
 
 <div class="login">
-  <img src="/icons/logo.svg" alt="" width="64" height="64" />
+  <img src={logoUrl} alt="" width="64" height="64" />
   <h1>{t('Anmelden')}</h1>
   <p class="muted">{t('Dieser Aroio ist mit einem Passwort geschützt.')}</p>
   <form class="stack" onsubmit={submit}>

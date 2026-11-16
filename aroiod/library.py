@@ -44,6 +44,19 @@ def art_url(key):
     return f"/api/v1/art/{key}.svg"
 
 
+def art_label(lib, key):
+    """Text for the generated cover of a library key (album title, artist, station ...)."""
+    try:
+        provider, kind, k = key.split(":", 2)
+        if provider in lib.catalogs:
+            c = lib.catalogs[provider]
+            return {"album": lambda: c.albums[k]["title"], "artist": lambda: c.artists[k]["name"],
+                    "playlist": lambda: c.playlists[k]["title"]}.get(kind, lambda: k)()
+        return lib.item(key)["title"] if provider == "radio" else k
+    except (ValueError, KeyError):
+        return key.split(":")[-1]
+
+
 def art_svg(key, label=""):
     h = hashlib.sha1(key.encode()).digest()
     hue1, hue2 = h[0] * 360 // 256, (h[0] * 360 // 256 + 40 + h[1] % 80) % 360

@@ -11,3 +11,4 @@ output/
 .ccache/
 web/test-results/
 web/playwright-report/
+web/dist-demo/

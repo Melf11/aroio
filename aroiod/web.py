@@ -19,7 +19,7 @@ from aiohttp import WSMsgType, web
 from . import dsp
 from .config import Invalid
 from .engine import SOURCES
-from .library import art_svg
+from .library import art_label, art_svg
 from .migration import FILTER_RE, RATE_TOKENS
 from .store import load_json
 
@@ -307,19 +307,7 @@ async def library_favorite(request):
 @routes.get(A + "/art/{key}.svg")
 async def art(request):
     key = request.match_info["key"]
-    lib = dev(request).library
-    label = ""
-    try:
-        provider, kind, k = key.split(":", 2)
-        if provider in lib.catalogs:
-            c = lib.catalogs[provider]
-            label = {"album": lambda: c.albums[k]["title"], "artist": lambda: c.artists[k]["name"],
-                     "playlist": lambda: c.playlists[k]["title"]}.get(kind, lambda: k)()
-        else:
-            label = lib.item(key)["title"] if provider == "radio" else k
-    except (ValueError, KeyError):
-        label = key.split(":")[-1]
-    return web.Response(text=art_svg(key, label), content_type="image/svg+xml",
+    return web.Response(text=art_svg(key, art_label(dev(request).library, key)), content_type="image/svg+xml",
                         headers={"Cache-Control": "public, max-age=86400"})
 
 
