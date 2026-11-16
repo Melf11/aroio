@@ -100,7 +100,7 @@
     {#if d?.expert_mode}
       <h2 class="section-title">{t('Expertenmodus')}</h2>
       <ul class="list">
-        <li><a class="link-row" href="/klang/import"><Upload size={20} aria-hidden="true" /><span class="grow">{t('FIR-Filter importieren (Acourate, Audiovero, REW)')}</span><ChevronRight size={20} aria-hidden="true" /></a></li>
+        <li><a class="link-row" href="/klang/import"><Upload size={20} aria-hidden="true" /><span class="grow">{t('FIR-Filter importieren und Kopfhörer-Korrektur')}</span><ChevronRight size={20} aria-hidden="true" /></a></li>
       </ul>
       {#if dsp.status}
         <dl class="status card">

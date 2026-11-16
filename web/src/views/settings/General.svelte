@@ -1,6 +1,7 @@
 <script>
   import PageHeader from '../../components/PageHeader.svelte';
   import Segmented from '../../components/Segmented.svelte';
+  import InstallGuide from '../../components/InstallGuide.svelte';
   import { app, toast } from '../../lib/state.svelte.js';
   import { api, config } from '../../lib/api.js';
   import { t } from '../../lib/i18n.svelte.js';
@@ -37,6 +38,8 @@
       <Segmented legend={t('Sprache')} options={[{ value: 'de', label: 'Deutsch' }, { value: 'en', label: 'English' }]} value={d.language} onchange={(v) => save({ device: { language: v } })} />
       <Segmented legend={t('Darstellung')} options={[{ value: 'auto', label: t('Automatisch') }, { value: 'light', label: t('Hell|Darstellung') }, { value: 'dark', label: t('Dunkel') }]} value={d.theme} onchange={(v) => save({ device: { theme: v } })} />
     </div>
+    <h2 class="section-title">{t('Als App auf dem Handy')}</h2>
+    <InstallGuide />
     <h2 class="section-title">{t('App-Passwort')}</h2>
     <p class="muted">{pwOn ? t('Die App fragt in jedem neuen Browser nach dem Passwort.') : t('Ohne Passwort kann jeder im Heimnetz den Aroio bedienen. Das ist meist so gewollt.')}</p>
     <form class="stack" onsubmit={(e) => { e.preventDefault(); setPassword(pw); }}>

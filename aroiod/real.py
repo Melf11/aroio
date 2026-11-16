@@ -729,13 +729,19 @@ class RealWorld:
         from . import soloist
 
         async def job():
-            msg = await asyncio.get_running_loop().run_in_executor(None, soloist.update, True)
+            try:
+                msg = await asyncio.get_running_loop().run_in_executor(None, soloist.update, True)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Soloist download")
+                msg = f"Der Spotify-Player konnte nicht geladen werden: {exc}"
             log.info("Soloist: %s", msg)
             self._soloist_error = None if soloist.BIN.is_file() else msg
             await _output_ok("systemctl", "restart", soloist.UNIT)
-            self.device.publish_services()
+
         self._soloist_error = None
         self._soloist_job = asyncio.ensure_future(job())
+        # only a finished job counts as finished in spotify_status(): publish then, not inside it
+        self._soloist_job.add_done_callback(lambda _t: self.device.publish_services())
         self.device.publish_services()
 
     def pending_login(self, provider):
@@ -897,6 +903,20 @@ class RealWorld:
             return Path("/etc/aroio-version").read_text().strip() or "dev"
         except OSError:
             return "dev"
+
+    async def fetch(self, url, max_bytes=8 * 1024 * 1024):
+        """GET a file from the internet (headphone filters ...). German errors for the app."""
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as s:
+                async with s.get(url, headers={"User-Agent": "AroioOS", "Accept": "*/*"}) as r:
+                    if r.status != 200:
+                        raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
+                    data = await r.content.read(max_bytes + 1)
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise ValueError("Keine Verbindung zu GitHub. Ist der Aroio mit dem Internet verbunden?") from exc
+        if len(data) > max_bytes:
+            raise ValueError("Datei ist zu groß.")
+        return data
 
     async def check_update(self, channel):
         """Newest fitting GitHub release (aroiod.updates), None when up to date or offline."""

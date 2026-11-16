@@ -218,6 +218,12 @@ class SoloistClient:
     def start(self):
         asyncio.ensure_future(self._run())
 
+    def _publish(self):
+        """Settings › Spotify shows connected / logged in."""
+        publish = getattr(self.device, "publish_services", None)
+        if publish:
+            publish()
+
     async def _run(self):
         import aiohttp
         quiet = False
@@ -227,6 +233,7 @@ class SoloistClient:
                     async with s.ws_connect(self.url, heartbeat=30) as ws:
                         self.ws, self.connected, quiet = ws, True, False
                         log.info("Soloist verbunden")
+                        self._publish()
                         await self.send("get_auth_state")
                         async for msg in ws:
                             if msg.type != aiohttp.WSMsgType.TEXT:
@@ -243,6 +250,7 @@ class SoloistClient:
                 if self.connected:
                     self.connected = self.logged_in = False
                     self._stopped()
+                    self._publish()
                 self.ws = None
             await asyncio.sleep(3)
 
@@ -255,8 +263,11 @@ class SoloistClient:
     async def handle(self, msg):
         kind = msg.get("type")
         if kind == "auth_state":
+            was = self.logged_in
             self.logged_in = bool(msg.get("logged_in"))
             self.active = bool(msg.get("is_active"))
+            if was != self.logged_in:
+                self._publish()
             if self.logged_in:
                 await self.send("get_state")
             return

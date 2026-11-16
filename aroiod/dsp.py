@@ -232,6 +232,14 @@ def read_fir(data, name):
 
 
 def _read_wav(data):
+    rate, frames = read_wav_frames(data)
+    if frames.shape[1] != 1:
+        raise FilterFileError("WAV-Filter muss mono sein (eine Datei pro Kanal)")
+    return frames[:, 0]
+
+
+def read_wav_frames(data):
+    """WAV bytes -> (rate, float64 array of shape (frames, channels))."""
     if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
         raise FilterFileError("Keine WAV-Datei")
     pos, fmt, raw = 12, None, None
@@ -245,23 +253,37 @@ def _read_wav(data):
         pos += 8 + size + (size & 1)
     if not fmt or raw is None:
         raise FilterFileError("WAV-Datei unvollständig")
-    tag, channels, _rate, _, _, bits = fmt
-    if channels != 1:
-        raise FilterFileError("WAV-Filter muss mono sein (eine Datei pro Kanal)")
+    tag, channels, rate, _, _, bits = fmt
+    if tag == 0xFFFE and len(body := _chunk(data, b"fmt ")) >= 26:     # WAVE_FORMAT_EXTENSIBLE
+        tag = struct.unpack("<H", body[24:26])[0]
+    if not channels:
+        raise FilterFileError("WAV-Datei ohne Kanäle")
     if tag == 3 and bits == 64:
-        return np.frombuffer(raw, dtype="<f8").copy()
-    if tag == 3 and bits == 32:
-        return np.frombuffer(raw, dtype="<f4").astype(np.float64)
-    if tag == 1 and bits == 32:
-        return np.frombuffer(raw, dtype="<i4").astype(np.float64) / 2 ** 31
-    if tag == 1 and bits == 24:
-        b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+        v = np.frombuffer(raw, dtype="<f8").astype(np.float64)
+    elif tag == 3 and bits == 32:
+        v = np.frombuffer(raw, dtype="<f4").astype(np.float64)
+    elif tag == 1 and bits == 32:
+        v = np.frombuffer(raw, dtype="<i4").astype(np.float64) / 2 ** 31
+    elif tag == 1 and bits == 24:
+        b = np.frombuffer(raw[:len(raw) // 3 * 3], dtype=np.uint8).reshape(-1, 3)
         v = (b[:, 0].astype(np.int32) | (b[:, 1].astype(np.int32) << 8) | (b[:, 2].astype(np.int32) << 16))
-        v = np.where(v & 0x800000, v - 0x1000000, v)
-        return v.astype(np.float64) / 2 ** 23
-    if tag == 1 and bits == 16:
-        return np.frombuffer(raw, dtype="<i2").astype(np.float64) / 2 ** 15
-    raise FilterFileError("WAV-Format wird nicht unterstützt")
+        v = np.where(v & 0x800000, v - 0x1000000, v).astype(np.float64) / 2 ** 23
+    elif tag == 1 and bits == 16:
+        v = np.frombuffer(raw[:len(raw) // 2 * 2], dtype="<i2").astype(np.float64) / 2 ** 15
+    else:
+        raise FilterFileError("WAV-Format wird nicht unterstützt")
+    v = v[:len(v) // channels * channels]
+    return rate, v.reshape(-1, channels)
+
+
+def _chunk(data, cid):
+    pos = 12
+    while pos + 8 <= len(data):
+        c, size = data[pos:pos + 4], struct.unpack("<I", data[pos + 4:pos + 8])[0]
+        if c == cid:
+            return data[pos + 8:pos + 8 + size]
+        pos += 8 + size + (size & 1)
+    return b""
 
 
 def fir_response_db(taps, freqs, rate):

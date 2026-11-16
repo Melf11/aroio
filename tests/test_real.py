@@ -216,3 +216,35 @@ async def test_bluetooth_list_follows_connections(monkeypatch):
     out["list-pcms"] = "/org/bluealsa/hci0/dev_B4_AE_C1_44_02_EA/a2dpsnk/source\n"
     await w.poll()
     assert d.published == 2 and w.connected == {"B4:AE:C1:44:02:EA"}
+
+
+async def test_spotify_status_leaves_installing(monkeypatch, tmp_path):
+    """The app got "installing" forever: the job published while it was still running."""
+    import asyncio
+    from aroiod import soloist
+    world = real.RealWorld()
+    seen = []
+
+    class Secrets:
+        def has(self, key):
+            return True
+
+    class Dev:
+        config = type("C", (), {"get": staticmethod(lambda k: "Aroio")})()
+
+        def publish_services(self):
+            seen.append(world.spotify_status(Secrets())["status"])
+
+    world.device = Dev()
+    binary = tmp_path / "soloist"
+    binary.write_text("x")
+    monkeypatch.setattr(soloist, "BIN", binary)
+    monkeypatch.setattr(soloist, "update", lambda force: "geladen")
+    monkeypatch.setattr(soloist, "info", lambda: {"installed": True, "version": "1.3"})
+
+    async def noop(*a, **k):
+        return True, ""
+    monkeypatch.setattr(real, "_output_ok", noop)
+    world._soloist_install()
+    await asyncio.sleep(0.2)
+    assert seen[0] == "installing" and seen[-1] == "ready"

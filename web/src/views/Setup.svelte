@@ -5,6 +5,7 @@
   import Stepper from '../components/Stepper.svelte';
   import Segmented from '../components/Segmented.svelte';
   import Toggle from '../components/Toggle.svelte';
+  import InstallGuide from '../components/InstallGuide.svelte';
   import { app, toast } from '../lib/state.svelte.js';
   import { api, config } from '../lib/api.js';
   import { focusHeading } from '../lib/router.svelte.js';
@@ -197,6 +198,10 @@
         <h2>{t('Fertig eingerichtet')}</h2>
         <p>{t('Tipp: Mit einem Messmikrofon kann der Aroio deinen Raum einmessen und den Klang verbessern (Klang › Raum einmessen).')}</p>
       </div>
+      <details class="card install">
+        <summary>{t('Den Aroio als App auf den Home-Bildschirm legen')}</summary>
+        <InstallGuide compact />
+      </details>
       {#if needsReboot}
         <button class="btn primary block" type="button" onclick={finishAndReboot}>{t('Neu starten und fertig')}</button>
       {:else}
@@ -222,4 +227,6 @@
   .wrap { flex-wrap: wrap; }
   :global(.ok-ic) { color: var(--ok); }
   .btn.ghost { margin-top: 12px; }
+  .install summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+  .install[open] summary { margin-bottom: 12px; }
 </style>

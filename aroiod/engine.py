@@ -12,6 +12,7 @@ rate and no resampling.
 
 import asyncio
 import logging
+import math
 import time
 import uuid
 from pathlib import Path
@@ -229,7 +230,7 @@ class Device:
         d = self.config.data["dsp"]
         presets = []
         for p in d["presets"]:
-            item = {k: p[k] for k in ("id", "name", "kind", "origin", "gain_db") if k in p}
+            item = {k: p[k] for k in ("id", "name", "kind", "origin", "gain_db", "source") if k in p}
             if p["kind"] == "fir":
                 item["rates"] = sorted(int(r) for r in p.get("fir", {}))
             if p["kind"] == "peq":
@@ -761,6 +762,45 @@ class Device:
         self.save_preset(preset, activate=True)
         self.patch_config({"dsp": {"enabled": True}})
         return preset
+
+    # ── headphone correction (aroiod.headphones) ─────────────────────────────
+    async def headphone_list(self):
+        """Models of the headphone filter project, cached for an hour."""
+        import json
+        from . import headphones
+        cached = getattr(self, "_headphones", None)
+        if cached and time.monotonic() - cached[0] < 3600:
+            return cached[1]
+        tree = json.loads(await self.world.fetch(headphones.TREE_URL, 4 * 1024 * 1024))
+        result = {"source": headphones.PAGE, "collections": headphones.parse_tree(tree)}
+        self._headphones = (time.monotonic(), result)
+        return result
+
+    async def apply_headphone_filter(self, path):
+        """Download one model's filter, make it a FIR preset for every rate and switch to it."""
+        from . import headphones
+        listing = await self.headphone_list()
+        item = next((i for c in listing["collections"] for i in c["items"] if i["path"] == path), None)
+        if item is None:
+            raise ValueError("Diesen Kopfhörer gibt es in der Liste nicht.")
+        existing = next((p for p in self.config.data["dsp"]["presets"] if p.get("source") == path), None)
+        if existing is None:
+            data = await self.world.fetch(headphones.raw_url(path), headphones.MAX_BYTES)
+            filters, peak = await asyncio.get_event_loop().run_in_executor(None, headphones.build, data)
+            pid = "hp-" + uuid.uuid4().hex[:8]
+            fir = {}
+            for rate, pair in filters.items():
+                for ch, taps in pair.items():
+                    dst = f"{pid}_{ch}_{rate}.dbl"
+                    atomic_write_bytes(self.data / "filters" / dst, taps.astype("<f8").tobytes())
+                    fir.setdefault(str(rate), {})[ch] = dst
+            existing = {"id": pid, "name": f"Kopfhörer: {item['name']}"[:40], "kind": "fir", "origin": "headphone",
+                        "source": path, "fir": fir, "created": time.strftime("%Y-%m-%d"),
+                        # headroom for the boost (bass), so nothing clips
+                        "gain_db": -math.ceil(max(0.0, peak) * 2) / 2}
+            self.save_preset(existing, activate=False)
+        self.patch_config({"dsp": {"active_preset": existing["id"], "enabled": True}})
+        return existing
 
     def import_fir(self, name, files):
         """files: {(channel, rate): (filename, bytes)} -> new FIR preset."""

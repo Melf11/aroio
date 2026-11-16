@@ -460,3 +460,26 @@ async def test_spotify_events_keep_meta_and_volume(client, device):
     assert p["source"] == "spotify" and p["track"]["title"] == "Blue Train"
     await post(client, "/internal/source", {"source": "spotify", "event": "volume", "volume": 35})
     assert (await state(client))["player"]["volume"] == 35
+
+
+def test_headphone_filter_names_and_rates():
+    import numpy as np
+    from aroiod import dsp, headphones as hp
+    from aroiod.sim import sim_headphone_wav
+    assert hp.display_name("Headphones_Convolutions/AKG_K701-filters-48k.wav") == "AKG K701"
+    assert hp.display_name("Headphones_Convolutions/Sennheiser_momentum_true_wireless 4-filters-48k (2).wav") \
+        == "Sennheiser momentum true wireless 4"
+    assert hp.display_name("Headphones_Convolutions/SONY_MDR-MV1 -filters-48k.wav") == "SONY MDR-MV1"
+    tree = {"tree": [{"path": "README.md", "type": "blob"},
+                     {"path": "Headphones_Measurements/AKG_361.csv", "type": "blob"},
+                     {"path": "Headphones_Convolutions/b-filters-48k.wav", "type": "blob"},
+                     {"path": "Headphones_Convolutions/A-filters-48k.wav", "type": "blob"}]}
+    assert [i["name"] for i in hp.parse_tree(tree)[0]["items"]] == ["A", "b"]
+    filters, peak = hp.build(sim_headphone_wav("x"))
+    _, frames = dsp.read_wav_frames(sim_headphone_wav("x"))
+    freqs = np.array([50.0, 1000.0, 5000.0, 15000.0])
+    ref = dsp.fir_response_db(frames[:, 0], freqs, 48000)
+    for rate, pair in filters.items():
+        assert np.max(np.abs(dsp.fir_response_db(pair["L"], freqs, rate) - ref)) < 0.05, rate
+        assert np.argmax(np.abs(pair["L"])) < 8            # minimum phase: energy at the start
+        assert len(pair["L"]) <= 65536

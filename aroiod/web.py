@@ -425,6 +425,19 @@ async def dsp_import(request):
     return ok({"preset": preset["id"], "warnings": problems})
 
 
+@routes.get(A + "/dsp/headphones")
+async def dsp_headphones(request):
+    """Models of the headphone correction project (downloaded from GitHub, cached)."""
+    return ok(await dev(request).headphone_list())
+
+
+@routes.post(A + "/dsp/headphones")
+async def dsp_headphones_apply(request):
+    data = await body(request)
+    preset = await dev(request).apply_headphone_filter(str(data.get("path", "")))
+    return ok({"preset": preset["id"], "name": preset["name"]})
+
+
 # ── room correction ──────────────────────────────────────────────────────────
 
 @routes.get(A + "/roomcorr/recordings.zip")

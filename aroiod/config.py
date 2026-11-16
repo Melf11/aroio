@@ -227,7 +227,7 @@ def check_presets(value):
             "trim_db": {ch: F(float, 0.0, lo=-20, hi=6).check(f"{path}.trim_db.{ch}",
                                                                 (p.get("trim_db") or {}).get(ch, 0.0))
                         for ch in ("L", "R")},
-            "origin": F(str, "user", choices=["builtin", "user", "roomcorr", "import", "migration"]).check(
+            "origin": F(str, "user", choices=["builtin", "user", "roomcorr", "import", "migration", "headphone"]).check(
                 path + ".origin", p.get("origin", "user")),
         }
         if kind == "peq":
@@ -252,6 +252,8 @@ def check_presets(value):
                 path + ".measurement", p["measurement"])
         if "created" in p:
             item["created"] = F(str, "", maxlen=40).check(path + ".created", p["created"])
+        if "source" in p:      # where a downloaded filter came from (headphone filter project path)
+            item["source"] = F(str, "", maxlen=200, pattern=r"^[^\x00-\x1f]*$").check(path + ".source", p["source"])
         out.append(item)
     if "bypass" not in seen:
         out.insert(0, builtin_bypass())

@@ -7,6 +7,7 @@ AirPlay from a phone, plug in the microphone, lose the network ...
 """
 
 import asyncio
+import json
 import copy
 import logging
 import random
@@ -444,6 +445,27 @@ class SimWorld:
         self.bt_devices = []
         self.log("Bluetooth: alle Kopplungen gelöscht")
 
+    # ── internet downloads (headphone filters) ──
+    SIM_HEADPHONES = ["Headphones_Convolutions/AKG_K371-filters-48k.wav",
+                      "Headphones_Convolutions/Apple_airpod_pro_3-filters-48k.wav",
+                      "Headphones_Convolutions/Beyerdynamic_DT_770_pro-filters-48k.wav",
+                      "Headphones_Convolutions/Sennheiser_HD_600-filters-48k.wav",
+                      "Headphones_Convolutions/Sony_WH-1000XM6-filters-48k.wav",
+                      "Headphone_Old_Target_Curve_Response/AKG_K701-filters-48k.wav",
+                      "Headphone_Old_Target_Curve_Response/Beyerdynamic_DT880-filters-48k.wav"]
+
+    async def fetch(self, url, max_bytes=8 * 1024 * 1024):
+        await asyncio.sleep(0 if self.fast else 0.6)
+        if not self.internet:
+            raise ValueError("Keine Verbindung zu GitHub. Ist der Aroio mit dem Internet verbunden?")
+        from . import headphones
+        if url == headphones.TREE_URL:
+            return json.dumps({"tree": [{"path": p, "type": "blob"} for p in self.SIM_HEADPHONES]}).encode()
+        name = url.rsplit("/", 1)[-1]
+        if not any(url == headphones.raw_url(p) for p in self.SIM_HEADPHONES):
+            raise ValueError("Download fehlgeschlagen (HTTP 404).")
+        return sim_headphone_wav(name)
+
     # ── updates ──
     async def check_update(self, channel):
         await asyncio.sleep(0.2 if self.fast else 1.2)
@@ -713,3 +735,22 @@ def _fake_fir(name):
     taps[128] = 0.8
     taps[129:700] = rng.normal(0, 0.002, 571) * np.exp(-np.arange(571) / 120)
     return taps.astype("<f8").tobytes()
+
+
+def sim_headphone_wav(seed):
+    """A plausible headphone correction (bass and treble shelf, presence dip) as a
+    48 kHz stereo float WAV, different per model."""
+    import hashlib
+    import struct
+    import numpy as np
+    from .headphones import _minimum_phase
+    h = hashlib.sha1(seed.encode()).digest()
+    n = 4096
+    f = np.fft.rfftfreq(n, 1 / 48000)
+    db = ((h[0] % 7) - 2) / (1 + (f / 120) ** 2) - (h[1] % 5) * np.exp(-((np.log2(np.maximum(f, 1) / 3000)) ** 2) * 4) \
+        + ((h[2] % 7) - 3) / (1 + (8000 / np.maximum(f, 1)) ** 2)
+    taps = _minimum_phase(10 ** (db / 20), n).astype("<f4")
+    frames = np.repeat(taps[:, None], 2, axis=1).tobytes()
+    fmt = struct.pack("<HHIIHH", 3, 2, 48000, 48000 * 8, 8, 32)
+    return (b"RIFF" + struct.pack("<I", 36 + len(frames)) + b"WAVE" + b"fmt " + struct.pack("<I", 16) + fmt
+            + b"data" + struct.pack("<I", len(frames)) + frames)

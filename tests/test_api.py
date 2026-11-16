@@ -471,3 +471,34 @@ async def test_network_topic_follows_address_changes(client, device):
     await device.netsetup.tick()
     after = (await state(client))["network"]
     assert after["lan"]["address"] == "172.21.24.197" and after != before
+
+
+async def test_headphone_filters(client, device):
+    """Expert mode: headphone correction filters from the GitHub project, applied as FIR preset."""
+    r = await client.get("/api/v1/dsp/headphones")
+    assert r.status == 200
+    listing = await r.json()
+    assert listing["source"].startswith("https://github.com/")
+    names = [i["name"] for c in listing["collections"] for i in c["items"]]
+    assert "AKG K701" in names and "Beyerdynamic DT 770 pro" in names
+    path = next(i["path"] for c in listing["collections"] for i in c["items"] if i["name"] == "AKG K701")
+    r = await client.post("/api/v1/dsp/headphones", json={"path": path})
+    assert r.status == 200
+    pid = (await r.json())["preset"]
+    s = await state(client)
+    assert s["dsp"]["active_preset"] == pid and s["dsp"]["enabled"] is True
+    preset = next(p for p in device.config.data["dsp"]["presets"] if p["id"] == pid)
+    assert preset["kind"] == "fir" and preset["origin"] == "headphone" and preset["name"] == "Kopfhörer: AKG K701"
+    assert sorted(int(x) for x in preset["fir"]) == [44100, 48000, 88200, 96000, 176400, 192000]
+    assert preset["gain_db"] <= 0
+    # the same model again: no second copy
+    r = await client.post("/api/v1/dsp/headphones", json={"path": path})
+    assert (await r.json())["preset"] == pid
+    # only paths from the list
+    r = await client.post("/api/v1/dsp/headphones", json={"path": "../../etc/passwd"})
+    assert r.status == 400
+    # offline: a German message for the app
+    device._headphones = None
+    device.world.internet = False
+    r = await client.get("/api/v1/dsp/headphones")
+    assert r.status == 400 and "Internet" in (await r.json())["error"]

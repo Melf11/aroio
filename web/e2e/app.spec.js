@@ -351,3 +351,30 @@ test('NetJack einschalten, Rate wählen, Rechner spielt', async ({ page, request
   await expect(main.getByRole('button', { name: 'Abspielen' })).toBeDisabled();   // only the sender starts it
   await axe(page, 'NetJack gestoppt');
 });
+
+test('Kopfhörer-Korrektur im Expertenmodus', async ({ page, request }) => {
+  await fresh(request);
+  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
+  await page.goto('/klang');
+  await page.getByRole('link', { name: 'FIR-Filter importieren und Kopfhörer-Korrektur' }).click();
+  await expect(page.getByRole('heading', { name: 'Kopfhörer-Korrektur' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Harman (älter)' }).check();
+  await page.getByLabel('Kopfhörer suchen').fill('k701');
+  await expect(page.getByText('1 Kopfhörer')).toBeVisible();
+  await axe(page, 'headphones');
+  await page.getByRole('button', { name: 'Anwenden: AKG K701' }).click();
+  await expect(page.getByText('aktiv', { exact: true })).toBeVisible({ timeout: 15000 });
+  const s = await (await api(request, '/state', undefined, 'get')).json();
+  expect(s.dsp.presets.find((p) => p.id === s.dsp.active_preset).name).toBe('Kopfhörer: AKG K701');
+});
+
+test('Anleitung: Aroio als App auf den Home-Bildschirm', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/allgemein');
+  await expect(page.getByRole('heading', { name: 'Als App auf dem Handy' })).toBeVisible();
+  await page.getByRole('radio', { name: 'iPhone / iPad' }).check();
+  await expect(page.getByText('„Zum Home-Bildschirm“')).toBeVisible();
+  await page.getByRole('radio', { name: 'Android' }).check();
+  await expect(page.getByText('„Zum Startbildschirm hinzufügen“')).toBeVisible();
+  await axe(page, 'install-guide');
+});
