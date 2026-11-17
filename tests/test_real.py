@@ -248,3 +248,25 @@ async def test_spotify_status_leaves_installing(monkeypatch, tmp_path):
     world._soloist_install()
     await asyncio.sleep(0.2)
     assert seen[0] == "installing" and seen[-1] == "ready"
+
+
+async def test_fetch_reads_whole_body_in_chunks(aiohttp_server):
+    """Through a proxy the body arrives in small pieces: fetch() must not stop at the first
+    (it did: 'Unterminated string starting at: line 1 column 65716')."""
+    import json as _json
+    body = _json.dumps({"tree": [{"path": "x" * 50, "type": "blob"}] * 4000}).encode()
+
+    async def handler(request):
+        resp = web.StreamResponse()
+        await resp.prepare(request)
+        for i in range(0, len(body), 1000):
+            await resp.write(body[i:i + 1000])
+            await asyncio.sleep(0)
+        await resp.write_eof()
+        return resp
+    app = web.Application()
+    app.router.add_get("/tree", handler)
+    server = await aiohttp_server(app)
+    w = real.RealWorld.__new__(real.RealWorld)
+    data = await w.fetch(str(server.make_url("/tree")))
+    assert data == body and len(body) > 200_000

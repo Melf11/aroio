@@ -181,6 +181,7 @@ class Device:
             "reboot_required": self.reboot_required,
             "sound_card_missing": self.sound_card_missing(),
             "simulated": self.world.simulated,
+            "test_signal": getattr(self, "test_signal_state", None),
         })
 
     def publish_player(self):
@@ -1046,13 +1047,43 @@ class Device:
         return code
 
     # ── misc device functions ────────────────────────────────────────────────
+    def test_signal(self, kind, channel="both", seconds=2.0):
+        """Speaker check: 440 Hz tone or pink noise, left/right/both, 0.5 s to 5 min.
+        kind None stops it. Music pauses (the loopback takes one rate and one writer)."""
+        if kind not in (None, "tone", "noise"):
+            raise Invalid("kind", "Unbekanntes Testsignal.")
+        if channel not in ("L", "R", "both"):
+            raise Invalid("channel", "Kanal: links, rechts oder beide.")
+        try:
+            seconds = float(seconds)
+        except (TypeError, ValueError):
+            raise Invalid("seconds", "Dauer in Sekunden angeben.") from None
+        if not 0.5 <= seconds <= 300:
+            raise Invalid("seconds", "Dauer zwischen 0,5 Sekunden und 5 Minuten.")
+        timer = getattr(self, "_signal_timer", None)
+        if timer:
+            timer.cancel()
+        if kind:
+            if self.state == "playing":
+                self.pause()
+            self.test_signal_state = {"kind": kind, "channel": channel, "seconds": seconds,
+                                      "until": time.time() + seconds}
+            self._signal_timer = asyncio.get_event_loop().call_later(seconds, self._signal_done)
+        else:
+            self.test_signal_state = None
+        self.world.test_signal(kind, channel, seconds)
+        self.publish_device()
+
+    def _signal_done(self):
+        self._signal_timer = None
+        self.test_signal_state = None
+        self.publish_device()
+
     def test_noise(self, channel):
         """Pink noise for setting up speakers and levels (None stops it)."""
-        if channel not in (None, "L", "R", "both"):
-            raise ValueError(channel)
-        if channel:
-            self.pause()
-        self.world.test_noise(channel)
+        if channel is None:
+            return self.test_signal(None)
+        return self.test_signal("noise", channel, 300)
 
     def set_lyrion_credentials(self, user, password):
         self.secrets.set("lms.user", (user or "").strip() or None)
@@ -1060,9 +1091,8 @@ class Device:
         self.publish_services()
 
     def test_tone(self, channel):
-        if channel not in ("L", "R", "both"):
-            raise ValueError(channel)
-        self.world.test_tone(channel)
+        """Short tone (setup guide, migration): 1.5 s, music keeps its place."""
+        self.test_signal("tone", channel, 1.5)
 
     def factory_reset(self):
         self.stop()

@@ -28,7 +28,6 @@
     try { await config({ hardware: { dac_driver: id } }); toast(t('Treiber gespeichert. Wird nach einem Neustart aktiv.')); }
     catch (e) { toast(e.message, 'danger'); }
   }
-  const tone = (channel) => api.post('/system/test-tone', { channel }).catch((e) => toast(e.message, 'danger'));
 
   const numbers = [
     ['start_volume', 'Startlautstärke (%)', 'Lautstärke nach dem Einschalten.'],
@@ -90,10 +89,7 @@
         </ul>
       </fieldset>
 
-      <div class="row wrap">
-        <button class="btn" type="button" onclick={() => tone('L')}>{t('Testton links')}</button>
-        <button class="btn" type="button" onclick={() => tone('R')}>{t('Testton rechts')}</button>
-      </div>
+      <p><a href="/einstellungen/lautsprecher">{t('Lautsprecher prüfen')}</a></p>
 
       <div class="field">
         <label for="drv">{t('Treiber für die Aufsteckkarte')}</label>
@@ -151,7 +147,6 @@
   .text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .name { font-weight: 600; }
   .warn-item { cursor: default; color: var(--warn); }
-  .wrap { flex-wrap: wrap; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 16px; }
   .save { align-self: flex-start; }
 </style>

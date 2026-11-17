@@ -26,6 +26,7 @@
   import SettingsBluetooth from './views/settings/Bluetooth.svelte';
   import SettingsUpdates from './views/settings/Updates.svelte';
   import SettingsDevice from './views/settings/Device.svelte';
+  import SettingsSpeakers from './views/settings/Speakers.svelte';
   import SettingsAudio from './views/settings/Audio.svelte';
   import SettingsHardware from './views/settings/Hardware.svelte';
   import SettingsSystem from './views/settings/System.svelte';
@@ -42,7 +43,7 @@
     ['/einstellungen', Settings], ['/einstellungen/allgemein', SettingsGeneral], ['/einstellungen/netzwerk', SettingsNetwork],
     ['/einstellungen/dienste', SettingsServices], ['/einstellungen/dienste/:id', SettingsService],
     ['/einstellungen/bluetooth', SettingsBluetooth], ['/einstellungen/updates', SettingsUpdates],
-    ['/einstellungen/geraet', SettingsDevice], ['/einstellungen/ton', SettingsAudio],
+    ['/einstellungen/geraet', SettingsDevice], ['/einstellungen/lautsprecher', SettingsSpeakers], ['/einstellungen/ton', SettingsAudio],
     ['/einstellungen/hardware', SettingsHardware], ['/einstellungen/system', SettingsSystem],
     ['/einstellungen/lizenzen', SettingsLicenses],
   ];

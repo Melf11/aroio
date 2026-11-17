@@ -622,6 +622,8 @@ async def system_action(request):
         d.test_tone(data.get("channel", "both"))
     elif action == "test-noise":
         d.test_noise(data.get("channel"))
+    elif action == "test-signal":
+        d.test_signal(data.get("kind"), data.get("channel", "both"), data.get("seconds", 2))
     elif action == "factory-reset":
         if data.get("confirm") != "zuruecksetzen":
             raise ValueError("Bitte bestätigen.")

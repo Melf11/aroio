@@ -18,7 +18,7 @@ async function axe(page, name) {
 const ROUTES = ['/', '/musik', '/musik/b?path=local/albums', '/musik/b?path=local/album/3', '/musik/suche?q=licht', '/warteschlange',
   '/klang', '/einstellungen', '/einstellungen/allgemein', '/einstellungen/netzwerk', '/einstellungen/dienste',
   '/einstellungen/dienste/spotify', '/einstellungen/dienste/tidal', '/einstellungen/dienste/qobuz', '/einstellungen/dienste/lyrion',
-  '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet', '/einstellungen/lizenzen',
+  '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet', '/einstellungen/lautsprecher', '/einstellungen/lizenzen',
   '/klang/preset/werk-bbcdip'];
 const EXPERT = ['/einstellungen/ton', '/einstellungen/hardware', '/einstellungen/system', '/klang/import'];
 
@@ -420,4 +420,25 @@ test('Proxy einrichten und Internet testen', async ({ page, request }) => {
   await axe(page, 'proxy');
   await page.getByRole('button', { name: 'Proxy entfernen' }).click();
   await expect(page.getByText(/^Aktiv:/)).toHaveCount(0);
+});
+
+test('Lautsprecher prüfen: Ton oder Rauschen, Seite und Dauer', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen');
+  await page.getByRole('link', { name: /Lautsprecher prüfen/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Lautsprecher prüfen' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Rosa Rauschen' }).check();
+  await page.getByRole('radio', { name: 'Rechts' }).check();
+  await page.getByLabel('Dauer').selectOption('30');
+  await page.getByRole('button', { name: 'Abspielen' }).click();
+  await expect(page.getByRole('status')).toContainText('Rauschen rechts, 30 s');
+  await axe(page, 'lautsprecher');
+  await page.getByRole('button', { name: 'Stopp' }).click();
+  await expect(page.getByRole('button', { name: 'Stopp' })).toBeDisabled();
+  await page.getByRole('radio', { name: 'Ton (440 Hz)' }).check();
+  await page.getByRole('radio', { name: 'Links' }).check();
+  await page.getByLabel('Dauer').selectOption('1');
+  await page.getByRole('button', { name: 'Abspielen' }).click();
+  await expect(page.getByRole('status')).toContainText('Ton links, 1 s');
+  await expect(page.getByRole('button', { name: 'Stopp' })).toBeDisabled({ timeout: 4000 });   // ends by itself
 });

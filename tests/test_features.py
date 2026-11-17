@@ -187,9 +187,9 @@ def test_input_events():
 
 async def test_misc_endpoints(client, device):
     await post(client, "/system/test-noise", {"channel": "L"})
-    assert device.world.request["kind"] == "noise_loop"
+    assert device.world.request["kind"] == "signal" and device.world.request["signal_kind"] == "noise"
     await post(client, "/system/test-noise", {"channel": None})
-    assert device.world.request["kind"] == "noise_stop"
+    assert device.world.request["kind"] == "signal_stop"
     r = await client.delete("/api/v1/bluetooth/devices")
     assert r.status == 200 and (await state(client))["bluetooth"]["devices"] == []
     lic = await (await client.get("/api/v1/system/licenses")).json()
@@ -550,3 +550,31 @@ def test_real_proxy_env(monkeypatch, tmp_path):
     assert os.environ["https_proxy"] == "http://u:p@proxy:8080"
     w._proxy_write("")
     assert not f.exists() and "https_proxy" not in os.environ
+
+
+async def test_speaker_check_signal(client, device):
+    """One speaker check: tone or pink noise, left/right/both, chosen duration."""
+    await post(client, "/system/test-signal", {"kind": "noise", "channel": "R", "seconds": 0.6})
+    st = (await state(client))["device"]["test_signal"]
+    assert st["kind"] == "noise" and st["channel"] == "R" and st["seconds"] == 0.6
+    assert device.world.request["seconds"] == 0.6
+    await asyncio.sleep(0.8)
+    assert (await state(client))["device"]["test_signal"] is None       # ends by itself
+    await post(client, "/system/test-signal", {"kind": "tone", "channel": "L", "seconds": 60})
+    await post(client, "/system/test-signal", {"kind": None})
+    assert (await state(client))["device"]["test_signal"] is None and device.world.request["kind"] == "signal_stop"
+    for bad in ({"kind": "sweep"}, {"kind": "tone", "channel": "M"}, {"kind": "tone", "seconds": 301}):
+        await post(client, "/system/test-signal", bad, status=400)
+
+
+def test_signal_frames_are_seamless():
+    from aroiod import real
+    import numpy as np
+    for kind in ("tone", "noise"):
+        raw = b"".join(real.signal_frames(kind, "L", 9.0))
+        x = np.frombuffer(raw, "<i4").reshape(-1, 2) / 2147483647
+        assert len(x) == 9 * 48000 and not x[:, 1].any()
+        assert abs(x[0, 0]) < 1e-3 and abs(x[-1, 0]) < 1e-3                # fades
+        jump = np.abs(np.diff(x[191000:193000, 0])).max()                    # block border at 4 s
+        typical = np.abs(np.diff(x[100000:120000, 0])).max()
+        assert jump <= typical * 1.01

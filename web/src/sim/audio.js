@@ -222,6 +222,16 @@ export class HostAudio {
     if (this.state.playing) { this.state.playing = false; this.emit(); }
   }
 
+  stopSignal() {
+    const t = this.testSignal;
+    this.testSignal = null;
+    if (!t) return;
+    const now = this.ctx.currentTime;
+    t.g.gain.cancelScheduledValues(now);
+    t.g.gain.setTargetAtTime(0, now, 0.01);
+    try { t.src.stop(now + 0.1); } catch { /* already stopped */ }
+  }
+
   // ── requests from aroiod: tones, noise, sweeps, real measurements ──
   async handle(req, sim) {
     const ctx = this.ctx;
@@ -234,6 +244,21 @@ export class HostAudio {
       route(ctx, g, req.channel, this.fxIn);
       osc.start();
       osc.stop(ctx.currentTime + req.seconds + 0.1);
+    } else if (req.kind === 'signal') {
+      // speaker check: 440 Hz or pink noise (looped) for the chosen time, like on the device
+      this.stopSignal();
+      const src = req.signal_kind === 'tone' ? ctx.createOscillator() : ctx.createBufferSource();
+      if (req.signal_kind === 'tone') src.frequency.value = 440;
+      else { src.buffer = this.noise; src.loop = true; }
+      const g = ctx.createGain();
+      envelope(g.gain, ctx.currentTime, req.seconds, req.signal_kind === 'tone' ? 0.25 : dbToGain(-15));
+      src.connect(g);
+      route(ctx, g, req.channel, this.fxIn);
+      src.start();
+      src.stop(ctx.currentTime + req.seconds + 0.1);
+      this.testSignal = { src, g };
+    } else if (req.kind === 'signal_stop') {
+      this.stopSignal();
     } else if (req.kind === 'noise') {
       const src = ctx.createBufferSource();
       src.buffer = this.noise;

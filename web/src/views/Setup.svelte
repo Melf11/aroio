@@ -186,7 +186,7 @@
     <section class="stack">
       {#if needsReboot}
         <h1>{t('Fast fertig')}</h1>
-        <p>{t('Damit die gewählte Soundkarte aktiv wird, startet der Aroio jetzt einmal neu. Danach kannst du die Lautsprecher unter Einstellungen › Über diesen Aroio prüfen.')}</p>
+        <p>{t('Damit die gewählte Soundkarte aktiv wird, startet der Aroio jetzt einmal neu. Links und rechts prüfst du danach unter Einstellungen › Lautsprecher prüfen.')}</p>
       {:else}
         <h1>{t('Lautsprecher prüfen')}</h1>
         <p>{t('Spiele einen kurzen Ton links und rechts. Kommt er aus dem richtigen Lautsprecher?')}</p>

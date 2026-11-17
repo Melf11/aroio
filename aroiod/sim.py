@@ -159,14 +159,16 @@ class SimWorld:
         self.boot_lines = lines
         self.log("Boot-Partition aroio.txt: " + " | ".join(lines[1:] or ["(leer)"]) + ", aktiv nach Neustart")
 
-    def test_noise(self, channel):
-        self.noise_channel = channel
-        if channel:
-            self._audio_request("noise_loop", channel=channel)
-            self.log(f"Testrauschen {'links' if channel == 'L' else 'rechts' if channel == 'R' else 'beide'}")
+    def test_signal(self, kind, channel, seconds):
+        if kind:
+            self.tone = {"kind": kind, "channel": channel, "at": time.time(), "until": time.time() + seconds}
+            self._audio_request("signal", signal_kind=kind, channel=channel, seconds=seconds)
+            side = {"L": "links", "R": "rechts"}.get(channel, "beide")
+            self.log(f"{'Testton' if kind == 'tone' else 'Rosa Rauschen'} {side}, {seconds:g} s")
         else:
-            self._audio_request("noise_stop")
-            self.log("Testrauschen aus")
+            self.tone = None
+            self._audio_request("signal_stop")
+            self.log("Testsignal aus")
 
     def licenses(self):
         return LICENSES
@@ -242,7 +244,7 @@ class SimWorld:
         from .levels import FLOOR, clean
         d = self.device
         now = time.time()
-        tone = self.tone and now - self.tone["at"] < 1.5
+        tone = self.tone and now < self.tone["until"]
         if tone:
             ch = self.tone["channel"]
             rms = [-15.0 if ch in ("L", "both") else FLOOR, -15.0 if ch in ("R", "both") else FLOOR]
@@ -300,11 +302,6 @@ class SimWorld:
     def set_volume(self, db):
         self.volume_db = db
         self.publish_sim()
-
-    def test_tone(self, channel):
-        self.tone = {"channel": channel, "at": time.time()}
-        self._audio_request("tone", channel=channel, seconds=1.5)
-        self.log(f"Testton {'links' if channel == 'L' else 'rechts' if channel == 'R' else 'beide'}")
 
     def rename(self, name):
         self.log(f"Name überall gesetzt: {name} (AirPlay, Spotify, UPnP, Bluetooth, Lyrion)")

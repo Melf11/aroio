@@ -163,6 +163,29 @@ def read_wav(path):
     return data.reshape(-1, ch)[:, 0]
 
 
+SIGNAL_RATE = 48000
+
+
+def signal_frames(kind, channel, seconds, rate=SIGNAL_RATE, block_seconds=4):
+    """The speaker test signal as raw S32_LE stereo blocks: 440 Hz at −12 dBFS or pink
+    noise at −15 dBFS RMS. One 4 s block repeats seamlessly (whole periods), 20 ms fades."""
+    n_block = rate * block_seconds
+    if kind == "tone":
+        base = 0.25 * np.sin(2 * np.pi * 440 * np.arange(n_block) / rate)
+    else:
+        from .sim import pink_noise
+        base = np.clip(pink_noise(n_block), -1, 1)
+    total, fade = int(seconds * rate), int(0.02 * rate)
+    done = 0
+    while done < total:
+        n = min(n_block, total - done)
+        sig = base[:n].copy()
+        idx = np.arange(done, done + n)
+        sig *= np.minimum(1.0, np.minimum(idx + 1, total - idx) / fade)
+        yield (np.clip(stereo(sig, channel), -1, 1) * 2147483647).astype("<i4").tobytes()
+        done += n
+
+
 def stereo(signal, channel):
     out = np.zeros((len(signal), 2))
     if channel in ("L", "both"):
@@ -623,30 +646,30 @@ class RealWorld:
         if changed:
             self._spawn(_output_ok("systemctl", "try-restart", "shairport-sync.service", "aroio-soloist.service", "upmpdcli.service"))
 
-    def test_noise(self, channel):
-        task = getattr(self, "_noise", None)
+    def test_signal(self, kind, channel, seconds):
+        task = getattr(self, "_signal", None)
         if task and not task.done():
             task.cancel()
-        if channel:
-            self._noise = asyncio.ensure_future(self._noise_loop(channel))
+        if kind:
+            self._signal = asyncio.ensure_future(self._signal_stream(kind, channel, seconds))
 
-    async def _noise_loop(self, channel, minutes=5):
-        from .sim import pink_noise
-        noise = pink_noise(48000 * 4)
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "noise.wav"
-            write_wav(path, stereo(noise, channel), channels=2)
-            t0 = time.monotonic()
-            try:
-                while time.monotonic() - t0 < minutes * 60:
-                    proc = await asyncio.create_subprocess_exec("aplay", "-q", "-D", LOOPBACK_PLAY, str(path))
-                    try:
-                        await proc.wait()
-                    except asyncio.CancelledError:
-                        proc.terminate()
-                        raise
-            except asyncio.CancelledError:
-                pass
+    async def _signal_stream(self, kind, channel, seconds):
+        """Stream the signal into the loopback through aplay's stdin: no gaps, stops at once."""
+        frames = signal_frames(kind, channel, seconds)
+        proc = await asyncio.create_subprocess_exec(
+            "aplay", "-q", "-D", LOOPBACK_PLAY, "-t", "raw", "-f", "S32_LE", "-r", str(SIGNAL_RATE), "-c", "2",
+            stdin=asyncio.subprocess.PIPE)
+        try:
+            for block in frames:
+                proc.stdin.write(block)
+                await proc.stdin.drain()
+            proc.stdin.close()
+            await proc.wait()
+        except asyncio.CancelledError:
+            proc.terminate()
+            await proc.wait()
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            log.warning("test signal: %s", exc)
 
     def cover(self, provider):
         if provider == "airplay" and getattr(self, "airplay", None):
@@ -697,20 +720,6 @@ class RealWorld:
             except (OSError, subprocess.SubprocessError) as exc:
                 out[name] = str(exc)
         return out
-
-    def test_tone(self, channel):
-        t = np.arange(int(1.5 * 48000)) / 48000
-        tone = 0.25 * np.sin(2 * np.pi * 440 * t) * np.minimum(1, np.minimum(t, t[::-1]) / 0.02)
-        self._spawn(self._play(stereo(tone, channel)))
-
-    async def _play(self, interleaved):
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            path = f.name
-        write_wav(path, interleaved, channels=2)
-        try:
-            await _run("aplay", "-q", "-D", LOOPBACK_PLAY, path)
-        finally:
-            os.unlink(path)
 
     # ── services ──
     def spotify_status(self, secrets):
@@ -984,7 +993,13 @@ class RealWorld:
                                              f"alle Geräte hinter derselben Internet-Adresse). In etwa {minutes} "
                                              "Minuten wieder.")
                         raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
-                    data = await r.content.read(max_bytes + 1)
+                    # read() returns what has arrived so far (one chunk), not the whole body
+                    data = bytearray()
+                    async for chunk in r.content.iter_chunked(1 << 16):
+                        data += chunk
+                        if len(data) > max_bytes:
+                            break
+                    data = bytes(data)
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             log.warning("fetch %s: %r", url, exc)
             raise ValueError(_internet_error(exc)) from exc
