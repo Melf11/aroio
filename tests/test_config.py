@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from aroiod.config import Config, Invalid, default_config
+from aroiod.config import VERSION, Config, Invalid, default_config
 
 
 def test_defaults_written_and_reloaded(tmp_path):
@@ -10,7 +10,7 @@ def test_defaults_written_and_reloaded(tmp_path):
     c = Config(path)
     assert c.get("device.name") == "Aroio"
     assert c.get("dsp.active_preset") == "bypass"
-    assert json.loads(path.read_text())["version"] == 1
+    assert json.loads(path.read_text())["version"] == VERSION
     assert Config(path).data == c.data
 
 

@@ -457,6 +457,7 @@ class RealWorld:
         self.soloist = SoloistClient(self.device)
         self.soloist.start()
         self._spawn(self._bluetooth_start())
+        self._spawn(self.wifi_power(self.device.config.get("network.wifi.enabled")))
 
     async def _bluetooth_start(self):
         """Name, and pairing for 5 minutes after boot while nothing is paired yet."""
@@ -785,7 +786,23 @@ class RealWorld:
                 "internet": bool(lan or wifi), "hostname": cfg["network"]["hostname"]}
 
     def network_apply(self, net):
-        log.info("network config: systemd-networkd/iwd in phase 1")
+        if net["wifi"]["enabled"] != wifi_enabled():
+            self._spawn(self.wifi_power(net["wifi"]["enabled"]))
+
+    async def wifi_power(self, on):
+        """WLAN on/off. Off = iwd stopped, no address, link down; the flag file keeps iwd
+        from starting at the next boot (ConditionPathExists in its drop-in)."""
+        if on:
+            WIFI_OFF_FLAG.unlink(missing_ok=True)
+            await _run("ip", "link", "set", WLAN, "up")
+            await _run("systemctl", "start", "iwd.service")
+        else:
+            WIFI_OFF_FLAG.parent.mkdir(parents=True, exist_ok=True)
+            WIFI_OFF_FLAG.touch()
+            await _run("systemctl", "stop", "iwd.service")
+            await _run("ip", "addr", "flush", "dev", WLAN)
+            await _run("ip", "link", "set", WLAN, "down")
+        log.info("WLAN %s", "on" if on else "off")
 
     # primitives for netsetup.NetSetup
     def links(self):
@@ -823,9 +840,25 @@ class RealWorld:
     async def hotspot_stop(self):
         await _run("systemctl", "stop", "aroio-hotspot.service", "aroio-portal-dns.service")
         await _run("ip", "addr", "flush", "dev", WLAN)
-        await _run("systemctl", "start", "iwd.service")
+        if wifi_enabled():
+            await _run("systemctl", "start", "iwd.service")
+        else:
+            await _run("ip", "link", "set", WLAN, "down")
 
     async def wifi_join(self, ssid, psk, timeout):
+        """Joining from the setup hotspot also works with the WLAN switched off: success
+        switches it on (netsetup saves enabled=True), failure leaves it off."""
+        was_off = not wifi_enabled()
+        if was_off:
+            WIFI_OFF_FLAG.unlink(missing_ok=True)
+            await _run("ip", "link", "set", WLAN, "up")
+        ok, error = await self._wifi_join(ssid, psk, timeout)
+        if not ok and was_off:
+            WIFI_OFF_FLAG.touch()
+            await _run("systemctl", "stop", "iwd.service")
+        return ok, error
+
+    async def _wifi_join(self, ssid, psk, timeout):
         await _run("systemctl", "start", "iwd.service")
         for _ in range(20):                     # iwd needs a moment to take over the interface
             if (await _output_ok("iwctl", "station", WLAN, "show"))[0]:
@@ -1056,6 +1089,11 @@ class RealWorld:
 
 WLAN = "wlan0"
 HOTSPOT_IP = "192.168.4.1"
+WIFI_OFF_FLAG = Path("/data/aroio/wifi-off")
+
+
+def wifi_enabled():
+    return not WIFI_OFF_FLAG.exists()
 
 HOSTAPD_CONF = """# written by aroiod: setup hotspot (open, only while nothing else is configured)
 interface={iface}

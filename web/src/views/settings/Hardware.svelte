@@ -41,7 +41,6 @@
       <span id="model-h" class="hint">{t('Bestimmt Pegelregelung, Drehgeber und Taste am Gerät. Rechner: {b}. Wirkt nach einem Neustart.', { b: d.board_label })}</span>
     </div>
     <ul class="list top">
-      <li><Toggle label={t('WLAN des Raspberry Pi')} description={t('Aus, wenn der Aroio per Kabel verbunden ist. Spart Strom und vermeidet Störungen.')} checked={hw.onboard_wifi} onchange={(v) => save({ onboard_wifi: v })} /></li>
       <li><Toggle label={t('Bluetooth des Raspberry Pi')} checked={hw.onboard_bluetooth} onchange={(v) => save({ onboard_bluetooth: v })} /></li>
       <li><Toggle label={t('Infrarot-Fernbedienung')} description={t('Die Aroio-Fernbedienung funktioniert sofort, andere Fernbedienungen lassen sich anlernen.')} checked={hw.ir_enabled} onchange={(v) => save({ ir_enabled: v })} /></li>
     </ul>

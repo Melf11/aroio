@@ -20,7 +20,7 @@ from .store import atomic_write_json, load_json
 
 log = logging.getLogger("aroiod.config")
 
-VERSION = 1
+VERSION = 2
 
 RATES = [44100, 48000, 88200, 96000, 176400, 192000]
 HOSTNAME_RE = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
@@ -148,7 +148,6 @@ SCHEMA = {
         "dac_driver": F(str, "auto", choices=DAC_DRIVER_IDS),
         "model": F(str, "auto", choices=["auto"] + MODEL_IDS),
         # ir_map: {"0x180d": "KEY_MUTE", ...}, validated by check_ir_map()
-        "onboard_wifi": F(bool, True),
         "onboard_bluetooth": F(bool, True),
         "ir_enabled": F(bool, True),
         "encoder_step": F(int, 2, lo=1, hi=10),
@@ -313,7 +312,19 @@ def _fill(schema, cfg):
 
 
 # version n -> n+1. Each function gets and returns the whole document.
-UPGRADES = {}
+def _wifi_switch_to_network(cfg):
+    """1 -> 2: hardware.onboard_wifi did nothing on the device; network.wifi.enabled is the switch."""
+    hw = cfg.get("hardware")
+    if isinstance(hw, dict) and hw.pop("onboard_wifi", True) is False:
+        net = cfg.setdefault("network", {})
+        if isinstance(net, dict):
+            wifi = net.setdefault("wifi", {})
+            if isinstance(wifi, dict):
+                wifi["enabled"] = False
+    return cfg
+
+
+UPGRADES = {1: _wifi_switch_to_network}
 
 
 def upgrade(cfg):

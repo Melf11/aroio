@@ -10,6 +10,16 @@
   const expert = $derived(app.topics.device?.expert_mode);
   let networks = $state(null), scanning = $state(false), chosen = $state(null), pw = $state(''), joining = $state(false), joinError = $state('');
   let lan = $state(null), lanErrors = $state({});
+  let confirmOff = $state(false);
+
+  async function setWifi(on) {
+    confirmOff = false;
+    if (!on) networks = null;
+    try { await config({ network: { wifi: { enabled: on } } }); toast(on ? t('WLAN eingeschaltet.') : t('WLAN ausgeschaltet.'), 'ok'); }
+    catch (e) { toast(e.message, 'danger'); }
+  }
+  // without a cable the app is reached over WLAN: switching it off ends this connection
+  const wifiToggle = (on) => (on || n.lan.connected ? setWifi(on) : (confirmOff = true));
 
   async function scan() {
     scanning = true;
@@ -39,10 +49,13 @@
     </ul>
     <p class="muted small addr">{t('Adresse der App: {url}', { url: `http://${n.hostname}.local` })}</p>
 
-    <h2 class="section-title">{t('WLAN wählen')}</h2>
-    {#if !n.wifi.enabled}<p class="notice warn">{t('Das WLAN ist ausgeschaltet (Expertenmodus › Hardware).')}</p>{/if}
-    <button class="btn" type="button" onclick={scan} disabled={scanning || !n.wifi.enabled}>{#if scanning}<LoaderCircle size={18} class="spin" aria-hidden="true" />{t('Suche …')}{:else}{t('Nach WLANs suchen')}{/if}</button>
-    {#if networks}
+    <h2 class="section-title">WLAN</h2>
+    <ul class="list"><li><Toggle label={t('WLAN')} description={t('Aus, wenn der Aroio per Kabel verbunden ist: kein Funk, keine zweite Adresse im Netz. Bleibt auch nach einem Neustart aus. Ohne Kabel öffnet der Aroio trotzdem den Einrichtungs-Hotspot, damit er erreichbar bleibt.')}
+                             checked={n.wifi.enabled} onchange={wifiToggle} /></li></ul>
+    {#if n.wifi.enabled}
+    <button class="btn top" type="button" onclick={scan} disabled={scanning}>{#if scanning}<LoaderCircle size={18} class="spin" aria-hidden="true" />{t('Suche …')}{:else}{t('Nach WLANs suchen')}{/if}</button>
+    {/if}
+    {#if networks && n.wifi.enabled}
       <ul class="list nets" aria-label={t('Gefundene WLANs')}>
         {#each networks as w}
           <li><button class="net" type="button" onclick={() => { chosen = w; pw = ''; joinError = ''; }}>
@@ -70,6 +83,14 @@
   {/if}
 </div>
 
+<Dialog bind:open={confirmOff} title={t('WLAN ausschalten?')}>
+  <p>{t('Der Aroio hat kein Kabel. Ohne WLAN verliert diese App die Verbindung. Er öffnet dann den Einrichtungs-Hotspot, darüber kannst du das WLAN wieder einrichten.')}</p>
+  {#snippet actions()}
+    <button class="btn" type="button" onclick={() => (confirmOff = false)}>{t('Abbrechen')}</button>
+    <button class="btn danger" type="button" onclick={() => setWifi(false)}>{t('Ausschalten')}</button>
+  {/snippet}
+</Dialog>
+
 <Dialog open={!!chosen} title={t('Mit „{ssid}“ verbinden', { ssid: chosen?.ssid })} onclose={() => (chosen = null)}>
   <form class="stack" onsubmit={join} id="joinform">
     {#if chosen?.secure}
@@ -86,6 +107,7 @@
 <style>
   .st { display: flex; gap: 14px; align-items: center; padding: 14px 16px; }
   .addr { margin: 8px 4px 0; }
+  .top { margin-top: 12px; }
   .nets { margin-top: 12px; }
   .net { display: flex; width: 100%; gap: 12px; align-items: center; padding: 14px 16px; min-height: 56px; border: 0; background: none; text-align: left; }
   .net:hover { background: var(--surface-2); }

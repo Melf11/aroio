@@ -502,3 +502,18 @@ async def test_headphone_filters(client, device):
     device.world.internet = False
     r = await client.get("/api/v1/dsp/headphones")
     assert r.status == 400 and "Internet" in (await r.json())["error"]
+
+
+async def test_wifi_switch(client, device):
+    await client.patch("/api/v1/config", json={"network": {"wifi": {"ssid": "Zuhause", "enabled": True}}})
+    assert (await state(client))["network"]["wifi"]["connected"]
+    r = await client.patch("/api/v1/config", json={"network": {"wifi": {"enabled": False}}})
+    assert r.status == 200
+    n = (await state(client))["network"]
+    assert n["wifi"]["enabled"] is False and not n["wifi"]["connected"]
+    body = await post(client, "/network/scan", status=400)
+    assert "ausgeschaltet" in body["error"]
+    await post(client, "/network/wifi", {"ssid": "Zuhause", "password": "geheim1234"}, status=400)
+    await client.patch("/api/v1/config", json={"network": {"wifi": {"enabled": True}}})
+    n = (await state(client))["network"]
+    assert n["wifi"]["enabled"] and n["wifi"]["connected"]

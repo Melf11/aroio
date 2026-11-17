@@ -24,7 +24,7 @@ def test_sample_migrates_into_valid_config(tmp_path):
     assert c.get("sources.bluetooth.enabled") is False
     assert c.get("sources.lms.server") == "192.168.1.10"
     assert c.get("audio.rate_mode") == "follow"
-    assert c.get("hardware.onboard_wifi") is False
+    assert c.get("network.wifi.enabled") is False
 
 
 def test_filter_banks_become_presets():

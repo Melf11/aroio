@@ -106,7 +106,12 @@ class NetSetup:
         """While the hotspot runs, the list from before it started (scanning would drop the phone)."""
         if self.active:
             return self.networks
+        self._check_enabled()
         return await self.world.wifi_scan()
+
+    def _check_enabled(self):
+        if not self.device.config.get("network.wifi.enabled"):
+            raise ValueError("Das WLAN ist ausgeschaltet. Schalte es zuerst ein.")
 
     async def connect(self, ssid, psk):
         """Returns {"switching": True} if the phone will lose the hotspot now."""
@@ -115,6 +120,7 @@ class NetSetup:
             self.device.publish_network()
             asyncio.ensure_future(self._switch(ssid, psk))
             return {"switching": True}
+        self._check_enabled()
         ok, error = await self.world.wifi_join(ssid, psk, self.join_timeout)
         if not ok:
             raise ValueError(error)

@@ -378,3 +378,28 @@ test('Anleitung: Aroio als App auf den Home-Bildschirm', async ({ page, request 
   await expect(page.getByText('„Zum Startbildschirm hinzufügen“')).toBeVisible();
   await axe(page, 'install-guide');
 });
+
+test('WLAN ausschalten', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/netzwerk');
+  const wlan = page.getByRole('switch', { name: 'WLAN', exact: true });
+  await expect(wlan).toHaveAttribute('aria-checked', 'true');
+  await wlan.click();                                   // with cable: off at once
+  await expect(wlan).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByRole('button', { name: 'Nach WLANs suchen' })).toHaveCount(0);
+  await axe(page, 'wlan-aus');
+  await wlan.click();
+  await expect(wlan).toHaveAttribute('aria-checked', 'true');
+
+  await api(request, '/sim/lan', { on: false });       // without cable: ask first
+  await wlan.click();
+  const dlg = page.getByRole('dialog', { name: 'WLAN ausschalten?' });
+  await expect(dlg).toBeVisible();
+  await axe(page, 'wlan-aus-dialog');
+  await dlg.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(wlan).toHaveAttribute('aria-checked', 'true');
+  await wlan.click();
+  await dlg.getByRole('button', { name: 'Ausschalten' }).click();
+  await expect(wlan).toHaveAttribute('aria-checked', 'false');
+  await api(request, '/sim/lan', { on: true });
+});

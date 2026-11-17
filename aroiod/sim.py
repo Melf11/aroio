@@ -385,7 +385,7 @@ class SimWorld:
                         "mac": "dc:a6:32:3f:2a:10"},
                 "wifi": {"connected": bool(self.wifi_ssid), "ssid": self.wifi_ssid or wifi_cfg["ssid"] or None,
                          "address": wifi_addr, "signal": -55 if self.wifi_ssid else None,
-                         "enabled": wifi_cfg["enabled"] and cfg["hardware"]["onboard_wifi"], "mac": "dc:a6:32:3f:2a:11"},
+                         "enabled": wifi_cfg["enabled"], "mac": "dc:a6:32:3f:2a:11"},
                 "internet": self.internet and (self.lan or bool(self.wifi_ssid)),
                 "hostname": cfg["network"]["hostname"]}
 
@@ -393,6 +393,9 @@ class SimWorld:
         self.log(f"Netzwerk angewendet: {net['hostname']}.local, LAN {'DHCP' if net['lan']['dhcp'] else net['lan']['address']}")
         if net["wifi"]["ssid"] and not self.wifi_ssid and net["wifi"]["enabled"]:
             self.wifi_ssid = net["wifi"]["ssid"]
+        if not net["wifi"]["enabled"] and self.wifi_ssid:
+            self.wifi_ssid = None
+            self.log("WLAN ausgeschaltet")
 
     async def wifi_scan(self):
         await asyncio.sleep(0.2 if self.fast else 1.2)

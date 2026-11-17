@@ -483,3 +483,31 @@ def test_headphone_filter_names_and_rates():
         assert np.max(np.abs(dsp.fir_response_db(pair["L"], freqs, rate) - ref)) < 0.05, rate
         assert np.argmax(np.abs(pair["L"])) < 8            # minimum phase: energy at the start
         assert len(pair["L"]) <= 65536
+
+
+def test_config_v1_wifi_switch_moves_to_network(tmp_path):
+    import json
+    from aroiod.config import Config
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps({"version": 1, "hardware": {"onboard_wifi": False}}))
+    c = Config(path)
+    assert c.get("network.wifi.enabled") is False and "onboard_wifi" not in c.data["hardware"]
+    path.write_text(json.dumps({"version": 1, "hardware": {"onboard_wifi": True}}))
+    assert Config(path).get("network.wifi.enabled") is True
+
+
+async def test_real_wifi_power(monkeypatch, tmp_path):
+    from aroiod import real
+    calls = []
+
+    async def run(*a):
+        calls.append(a)
+    monkeypatch.setattr(real, "_run", run)
+    monkeypatch.setattr(real, "WIFI_OFF_FLAG", tmp_path / "aroio" / "wifi-off")
+    w = real.RealWorld.__new__(real.RealWorld)
+    await w.wifi_power(False)
+    assert not real.wifi_enabled() and ("systemctl", "stop", "iwd.service") in calls
+    await w.hotspot_stop()                       # rescue hotspot over: iwd stays off
+    assert ("systemctl", "start", "iwd.service") not in calls
+    await w.wifi_power(True)
+    assert real.wifi_enabled() and calls[-1] == ("systemctl", "start", "iwd.service")

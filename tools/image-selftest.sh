@@ -62,6 +62,7 @@ grep -q "^pulse:" "$R/etc/passwd" || { echo "Benutzer pulse fehlt (aroio-pulse s
 grep -q "^MulticastDNS=no" "$R/etc/systemd/resolved.conf.d/aroio.conf" 2>/dev/null || { echo "systemd-resolved macht noch mDNS"; fail=1; }
 # same DHCP identity after every restart (machine-id is new on every boot): same IP address
 grep -q "^ClientIdentifier=mac" "$R/etc/systemd/network/20-wired.network" || { echo "DHCP-Kennung wechselt bei jedem Start (neue IP)"; fail=1; }
+grep -q "^ConditionPathExists=!/data/aroio/wifi-off" "$R/usr/lib/systemd/system/iwd.service.d/wifi-off.conf" 2>/dev/null || { echo "WLAN-Schalter wirkt nach Neustart nicht (iwd-Drop-in fehlt)"; fail=1; }
 grep -q -- "--volume=none" "$R/usr/lib/systemd/system/bluealsa-aplay.service.d/aroio.conf" || { echo "bluealsa-aplay ohne --volume=none (bricht ohne Mixer ab)"; fail=1; }
 ls "$R"/usr/lib/firmware/brcm/BCM4345C0*.hcd >/dev/null 2>&1 || { echo "Bluetooth-Firmware Pi 4 (BCM4345C0) fehlt"; fail=1; }
 grep -q "^root:[*!]" "$R/etc/shadow" || { echo "root hat ein leeres Passwort (dropbear lehnt dann auch Schlüssel ab)"; fail=1; }

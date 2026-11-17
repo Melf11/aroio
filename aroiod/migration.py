@@ -123,8 +123,8 @@ def migrate(text, filter_files=()):
 
     # ── hardware ──
     hw = {}
-    if u.get("ONBOARD_WIFI"):
-        hw["onboard_wifi"] = _on(u["ONBOARD_WIFI"])
+    if u.get("ONBOARD_WIFI") and not _on(u["ONBOARD_WIFI"]):
+        patch.setdefault("network", {}).setdefault("wifi", {})["enabled"] = False
     if u.get("ONBOARD_BLUETOOTH"):
         hw["onboard_bluetooth"] = _on(u["ONBOARD_BLUETOOTH"])
     rot = _int(u.get("DISPLAY_ROTATE"))
