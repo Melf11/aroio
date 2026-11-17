@@ -1,8 +1,9 @@
 """Headphone correction filters from github.com/AcrosonusMastering/Headphone-Correction-Filters.
 
 The project publishes one stereo WAV (48 kHz, minimum phase) per headphone model, made
-from Rtings measurements. It has no licence, so nothing of it is shipped: the Aroio
-downloads a filter from GitHub when someone applies it (like the Spotify player).
+from Rtings measurements (filters GPLv3 by Acrosonus Mastering, stated in its README).
+Nothing of it is shipped: the Aroio lists the repository and downloads a filter from
+GitHub only when someone applies it, so new headphones appear without an update.
 
 Only 48 kHz exists. So that music keeps its rate (no resampling to 48 kHz), the filter is
 redesigned for 44.1 to 192 kHz: same magnitude response up to 20 kHz (held above),

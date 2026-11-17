@@ -595,7 +595,7 @@ export default {
   'Als App auf dem Handy': 'As an app on your phone',
   'Anwenden': 'Apply',
   'Anwenden: {name}': 'Apply: {name}',
-  'Das Projekt nennt keine Lizenz; die Filter gehören ihren Autoren.': 'The project states no licence; the filters belong to their authors.',
+  'Filter von Acrosonus Mastering (GPLv3), Messdaten von Rtings.com.': 'Filters by Acrosonus Mastering (GPLv3), measurements from Rtings.com.',
   'Den Aroio als App auf den Home-Bildschirm legen': 'Put the Aroio on your home screen as an app',
   'Die App läuft schon vom Home-Bildschirm.': 'The app already runs from the home screen.',
   'Erneut versuchen': 'Try again',

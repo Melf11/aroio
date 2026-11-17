@@ -104,7 +104,7 @@
         </ul>
       {/if}
       <p class="muted small"><a href={hp.source} rel="external" target="_blank">{t('Projekt auf GitHub')}<ExternalLink size={14} aria-hidden="true" /></a>
-        · {t('Das Projekt nennt keine Lizenz; die Filter gehören ihren Autoren.')}</p>
+        · {t('Filter von Acrosonus Mastering (GPLv3), Messdaten von Rtings.com.')}</p>
     {/if}
   </section>
 </div>
