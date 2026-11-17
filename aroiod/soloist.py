@@ -95,6 +95,12 @@ def parse_version(line):
     return (m.group(1), m.group(2)) if m else (None, None)
 
 
+def _open(req, timeout):
+    """urlopen with the proxy as it is now: urllib.request.urlopen builds its opener once and
+    keeps the proxy of that moment, so a proxy entered later would be ignored."""
+    return urllib.request.build_opener().open(req, timeout=timeout)
+
+
 def _idle():
     """Nothing plays on Soloist (or it is not running): safe to restart it."""
     async def ask():
@@ -124,7 +130,7 @@ def update(force=False):
     current = info()
     try:
         req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "AroioOS"})
-        with urllib.request.urlopen(req, timeout=20) as res:
+        with _open(req, 20) as res:
             etag = res.headers.get("ETag") or res.headers.get("Last-Modified")
     except (urllib.error.URLError, OSError) as exc:
         return f"Spotify-Download nicht erreichbar: {exc}"
@@ -135,7 +141,7 @@ def update(force=False):
         try:
             archive = work / "soloist.tar.gz"
             req = urllib.request.Request(url, headers={"User-Agent": "AroioOS"})
-            with urllib.request.urlopen(req, timeout=180) as res, open(archive, "wb") as out:
+            with _open(req, 180) as res, open(archive, "wb") as out:
                 shutil.copyfileobj(res, out)
             with tarfile.open(archive) as tar:
                 member = tar.getmember("soloist")

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import urllib.request
 
 import numpy as np
 from aiohttp import WSMsgType, web
@@ -270,3 +271,30 @@ async def test_fetch_reads_whole_body_in_chunks(aiohttp_server):
     w = real.RealWorld.__new__(real.RealWorld)
     data = await w.fetch(str(server.make_url("/tree")))
     assert data == body and len(body) > 200_000
+
+
+async def test_soloist_download_follows_a_proxy_set_later(aiohttp_server, monkeypatch, tmp_path):
+    """urllib.request.urlopen keeps the proxy of its first call; the Spotify download must
+    use the proxy entered afterwards."""
+    from aroiod import soloist
+    seen = []
+
+    async def proxy_handler(request):           # plain HTTP proxy: absolute URL in the request line
+        seen.append((str(request.url), request.headers.get("Proxy-Authorization")))
+        return web.Response(text="via proxy")
+    proxy_app = web.Application()
+    proxy_app.router.add_route("*", "/{tail:.*}", proxy_handler)
+    proxy_srv = await aiohttp_server(proxy_app)
+    for k in ("http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(k, raising=False)
+    req = lambda: urllib.request.Request("http://example.invalid/soloist")  # noqa: E731
+
+    def first_call():                           # before the proxy: name does not resolve
+        try:
+            soloist._open(req(), 2)
+        except OSError:
+            pass
+    await asyncio.get_event_loop().run_in_executor(None, first_call)
+    monkeypatch.setenv("http_proxy", f"http://max:pw@127.0.0.1:{proxy_srv.port}")
+    body = await asyncio.get_event_loop().run_in_executor(None, lambda: soloist._open(req(), 5).read())
+    assert body == b"via proxy" and seen and seen[0][1].startswith("Basic ")
