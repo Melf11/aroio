@@ -171,3 +171,42 @@ def test_ab_update_pi3_reverts_when_unhealthy(tmp_path):
     rt = _tryboot(tmp_path, "Raspberry Pi 3 Model B Plus Rev 1.3", "B")
     rt("revert")                                                  # aroio-trial-watch: B never got healthy
     assert rt("get-primary") == "A" and rt("get-state", "B") == "bad"
+
+
+ATOM = """<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <entry>
+    <id>tag:github.com,2008:Repository/1/v0.2.0-beta.2</id>
+    <link rel="alternate" type="text/html" href="https://github.com/Melf11/aroio/releases/tag/v0.2.0-beta.2"/>
+    <content type="html">&lt;h2&gt;Neu&lt;/h2&gt;&lt;ul&gt;&lt;li&gt;Fix &lt;strong&gt;Spotify&lt;/strong&gt; &amp;amp; more&lt;/li&gt;&lt;/ul&gt;</content>
+  </entry>
+  <entry><id>tag:github.com,2008:Repository/1/v0.1.0</id><content type="html"></content></entry>
+</feed>"""
+
+
+def test_releases_from_atom_feed():
+    """Fallback when GitHub's API limit (60/h per internet address) is used up."""
+    rels = updates.releases_from_atom(ATOM, "Melf11/aroio")
+    assert [r["tag_name"] for r in rels] == ["v0.2.0-beta.2", "v0.1.0"]
+    assert rels[0]["prerelease"] and not rels[1]["prerelease"]
+    found = updates.pick_release(rels, "stable", "0.2.0-beta.1")
+    assert found["version"] == "0.2.0-beta.2" and found["notes"] == ["Fix Spotify & more"]
+    assert found["url"] == "https://github.com/Melf11/aroio/releases/download/v0.2.0-beta.2/aroio-0.2.0-beta.2.raucb"
+    assert updates.pick_release(rels, "stable", "0.0.9")["version"] == "0.1.0"
+
+
+async def test_real_update_check_falls_back_to_feed(monkeypatch):
+    from aroiod import real
+    monkeypatch.setattr(real.RealWorld, "version", "0.2.0-beta.1")
+    w = real.RealWorld.__new__(real.RealWorld)
+    seen = []
+
+    async def fetch(url, max_bytes=0):
+        seen.append(url)
+        if "api.github.com" in url:
+            raise ValueError("GitHub nimmt aus diesem Netz gerade keine Anfragen an")
+        return ATOM.encode()
+    w.fetch = fetch
+    monkeypatch.delenv("AROIO_UPDATE_REPO", raising=False)
+    found = await w.check_update("stable")
+    assert found["version"] == "0.2.0-beta.2" and seen[1] == "https://github.com/Melf11/aroio/releases.atom"

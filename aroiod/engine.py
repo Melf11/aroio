@@ -797,7 +797,21 @@ class Device:
         cached = getattr(self, "_headphones", None)
         if cached and time.monotonic() - cached[0] < 3600:
             return cached[1]
-        tree = json.loads(await self.world.fetch(headphones.TREE_URL, 4 * 1024 * 1024))
+        saved = self.data / "headphones.json"
+        try:
+            tree = json.loads(await self.world.fetch(headphones.TREE_URL, 4 * 1024 * 1024))
+            paths = sorted(e["path"] for e in tree.get("tree", []) if e.get("type") == "blob")
+            atomic_write_bytes(saved, json.dumps(paths).encode())
+        except (ValueError, KeyError, TypeError) as exc:
+            # GitHub's API refuses (limit shared by a whole company network) or no internet:
+            # the last list, else the one of the build. Downloads use raw.githubusercontent.com.
+            log.warning("headphone list from GitHub: %s; using the saved list", exc)
+            try:
+                paths = json.loads(saved.read_text())
+            except (OSError, ValueError):
+                from .headphone_paths import PATHS
+                paths = list(PATHS)
+        tree = {"tree": [{"path": p, "type": "blob"} for p in paths]}
         result = {"source": headphones.PAGE, "collections": headphones.parse_tree(tree)}
         self._headphones = (time.monotonic(), result)
         return result

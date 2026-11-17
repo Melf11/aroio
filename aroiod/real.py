@@ -975,6 +975,14 @@ class RealWorld:
             async with _internet_session(timeout=aiohttp.ClientTimeout(total=60)) as s:
                 async with s.get(url, headers={"User-Agent": "AroioOS", "Accept": "*/*"}) as r:
                     if r.status != 200:
+                        text = (await r.content.read(300)).decode("utf-8", "replace")
+                        log.warning("fetch %s: HTTP %s %s", url, r.status, " ".join(text.split()))
+                        if r.status in (403, 429) and r.headers.get("X-RateLimit-Remaining") == "0":
+                            reset = int(r.headers.get("X-RateLimit-Reset") or 0)
+                            minutes = max(1, int(reset - time.time()) // 60 + 1)
+                            raise ValueError("GitHub nimmt aus diesem Netz gerade keine Anfragen an (Limit für "
+                                             f"alle Geräte hinter derselben Internet-Adresse). In etwa {minutes} "
+                                             "Minuten wieder.")
                         raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
                     data = await r.content.read(max_bytes + 1)
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
@@ -990,17 +998,17 @@ class RealWorld:
         from . import updates
         repo = os.environ.get("AROIO_UPDATE_REPO", updates.REPO)
         try:
-            async with _internet_session(timeout=aiohttp.ClientTimeout(total=20)) as s:
-                async with s.get(updates.API.format(repo=repo),
-                                 headers={"Accept": "application/vnd.github+json",
-                                          "User-Agent": "AroioOS"}) as r:
-                    if r.status != 200:
-                        log.warning("update check: HTTP %s", r.status)
-                        raise ValueError(f"Die Update-Suche bei GitHub ist fehlgeschlagen (HTTP {r.status}).")
-                    releases = await r.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            log.warning("update check: %s", exc)
-            raise ValueError(_internet_error(exc)) from exc
+            releases = json.loads(await self.fetch(updates.API.format(repo=repo), 2 * 1024 * 1024))
+        except ValueError as exc:
+            # GitHub's API allows 60 requests an hour per internet address, shared by a whole
+            # company network. The release feed of the web page has no such limit.
+            log.warning("update check via API: %s; trying the release feed", exc)
+            try:
+                releases = updates.releases_from_atom(
+                    (await self.fetch(updates.ATOM.format(repo=repo), 2 * 1024 * 1024)).decode(), repo)
+            except ValueError as exc2:
+                log.warning("update check via feed: %s", exc2)
+                raise exc from None
         found = updates.pick_release(releases, channel, self.version)
         self._update = found
         return found

@@ -7,10 +7,13 @@ A release carries the RAUC bundle (`*.raucb`) as an asset; its body (Markdown)
 gives the notes shown in the app (bullet lines).
 """
 
+import html
 import re
+import xml.etree.ElementTree as ET
 
 REPO = "Melf11/aroio"
 API = "https://api.github.com/repos/{repo}/releases?per_page=20"
+ATOM = "https://github.com/{repo}/releases.atom"
 
 _NUM = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
 
@@ -56,6 +59,34 @@ def notes_from_body(body, limit=8):
         if len(notes) >= limit:
             break
     return notes
+
+
+def releases_from_atom(text, repo=REPO):
+    """The release feed of the GitHub page in the shape of the API (fallback when the API
+    refuses). It has no pre-release flag and no assets: a version with a suffix (-beta.1)
+    counts as pre-release, the bundle has the name the release workflow gives it."""
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as exc:
+        raise ValueError("Die Release-Liste von GitHub ist unlesbar.") from exc
+    out = []
+    for entry in root.findall("a:entry", ns):
+        tag = (entry.findtext("a:id", "", ns) or "").rsplit("/", 1)[-1]
+        version = tag.lstrip("v")
+        v = parse_version(version)
+        if v is None:
+            continue
+        content = html.unescape(entry.findtext("a:content", "", ns) or "")
+        body = "\n".join("- " + html.unescape(re.sub(r"<[^>]+>", "", li)).strip()
+                         for li in re.findall(r"<li>(.*?)</li>", content, re.S))
+        link = entry.find("a:link", ns)
+        out.append({"tag_name": tag, "prerelease": len(v[3]) > 1, "draft": False, "body": body,
+                    "html_url": link.get("href") if link is not None else None,
+                    "assets": [{"name": f"aroio-{version}.raucb", "size": 0,
+                                "browser_download_url":
+                                    f"https://github.com/{repo}/releases/download/{tag}/aroio-{version}.raucb"}]})
+    return out
 
 
 def pick_release(releases, channel, current):

@@ -508,9 +508,17 @@ async def test_headphone_filters(client, device):
     assert r.status == 400
     # offline: a German message for the app
     device._headphones = None
-    device.world.internet = False
+    device.world.internet = False         # the list stays (saved), downloading a new filter fails
     r = await client.get("/api/v1/dsp/headphones")
+    assert r.status == 200 and (await r.json())["collections"] == listing["collections"]
+    other = next(i["path"] for c in listing["collections"] for i in c["items"] if i["path"] != path)
+    r = await client.post("/api/v1/dsp/headphones", json={"path": other})
     assert r.status == 400 and "Internet" in (await r.json())["error"]
+    # never fetched (GitHub's API limit hit at the first try): the list of the build
+    (device.data / "headphones.json").unlink()
+    device._headphones = None
+    r = await client.get("/api/v1/dsp/headphones")
+    assert sum(len(c["items"]) for c in (await r.json())["collections"]) > 100
 
 
 async def test_wifi_switch(client, device):
