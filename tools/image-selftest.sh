@@ -79,6 +79,8 @@ grep -q "org.gnome.ShairportSync" "$R/etc/dbus-1/system.d/shairport-sync-dbus.co
 grep -aq "5\.6\.[0-9]" "$R/usr/bin/shairport-sync" || { echo "shairport-sync ist nicht 5.6"; fail=1; }
 # updates from GitHub need TLS in Python, and every image must trust the release key
 chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }
+# every module must import with the device's Python (it lacks e.g. xml): lazy imports fail only when used
+chroot "$R" /bin/sh -c 'cd /usr/lib/aroiod && /usr/bin/python3 -c "import importlib, pkgutil, aroiod; [importlib.import_module(\"aroiod.\" + m.name) for m in pkgutil.iter_modules(aroiod.__path__) if m.name != \"__main__\"]"' || { echo "aroiod-Modul laesst sich auf dem Geraet nicht importieren"; fail=1; }
 grep -q "$(sed -n 2p br2-external/board/rpi/rauc/release-cert.pem)" "$R/etc/rauc/keyring.pem" || { echo "Release-Zertifikat fehlt im Keyring"; fail=1; }
 [ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }

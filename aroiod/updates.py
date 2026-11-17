@@ -9,7 +9,6 @@ gives the notes shown in the app (bullet lines).
 
 import html
 import re
-import xml.etree.ElementTree as ET
 
 REPO = "Melf11/aroio"
 API = "https://api.github.com/repos/{repo}/releases?per_page=20"
@@ -65,24 +64,25 @@ def releases_from_atom(text, repo=REPO):
     """The release feed of the GitHub page in the shape of the API (fallback when the API
     refuses). It has no pre-release flag and no assets: a version with a suffix (-beta.1)
     counts as pre-release, the bundle has the name the release workflow gives it."""
-    ns = {"a": "http://www.w3.org/2005/Atom"}
-    try:
-        root = ET.fromstring(text)
-    except ET.ParseError as exc:
-        raise ValueError("Die Release-Liste von GitHub ist unlesbar.") from exc
+    # no xml module on the device (Python without pyexpat): the feed is simple enough
+    if "<feed" not in (text or ""):
+        raise ValueError("Die Release-Liste von GitHub ist unlesbar.")
     out = []
-    for entry in root.findall("a:entry", ns):
-        tag = (entry.findtext("a:id", "", ns) or "").rsplit("/", 1)[-1]
+    for entry in re.findall(r"<entry\b.*?</entry>", text, re.S):
+        def field(name):
+            m = re.search(rf"<{name}\b[^>]*>(.*?)</{name}>", entry, re.S)
+            return m.group(1).strip() if m else ""
+        tag = field("id").rsplit("/", 1)[-1]
         version = tag.lstrip("v")
         v = parse_version(version)
         if v is None:
             continue
-        content = html.unescape(entry.findtext("a:content", "", ns) or "")
+        link = re.search(r"<link\b[^>]*\bhref=\"([^\"]*)\"", entry)
+        content = html.unescape(field("content"))
         body = "\n".join("- " + html.unescape(re.sub(r"<[^>]+>", "", li)).strip()
                          for li in re.findall(r"<li>(.*?)</li>", content, re.S))
-        link = entry.find("a:link", ns)
         out.append({"tag_name": tag, "prerelease": len(v[3]) > 1, "draft": False, "body": body,
-                    "html_url": link.get("href") if link is not None else None,
+                    "html_url": html.unescape(link.group(1)) if link else None,
                     "assets": [{"name": f"aroio-{version}.raucb", "size": 0,
                                 "browser_download_url":
                                     f"https://github.com/{repo}/releases/download/{tag}/aroio-{version}.raucb"}]})

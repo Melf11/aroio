@@ -210,3 +210,20 @@ async def test_real_update_check_falls_back_to_feed(monkeypatch):
     monkeypatch.delenv("AROIO_UPDATE_REPO", raising=False)
     found = await w.check_update("stable")
     assert found["version"] == "0.2.0-beta.2" and seen[1] == "https://github.com/Melf11/aroio/releases.atom"
+
+
+def test_updates_work_without_xml_module():
+    """The device's Python has no xml package (no pyexpat): the feed fallback must not need it."""
+    import subprocess
+    import sys
+    code = ("import sys; sys.modules['xml'] = None; sys.modules['pyexpat'] = None\n"
+            "from aroiod import updates\n"
+            "feed = '<feed><entry><id>tag:github.com,2008:Repository/1/v1.2.0-beta.1</id>"
+            "<link rel=\"alternate\" href=\"https://github.com/x/y/releases/tag/v1.2.0-beta.1\"/>"
+            "<content type=\"html\">&lt;ul&gt;&lt;li&gt;Neu &amp;amp; besser&lt;/li&gt;&lt;/ul&gt;</content>"
+            "</entry></feed>'\n"
+            "r = updates.releases_from_atom(feed)\n"
+            "assert r[0]['tag_name'] == 'v1.2.0-beta.1' and r[0]['prerelease'], r\n"
+            "assert r[0]['body'] == '- Neu & besser', r[0]['body']\n"
+            "assert r[0]['html_url'].endswith('/v1.2.0-beta.1')\n")
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=str(__import__("pathlib").Path(__file__).parent.parent))
