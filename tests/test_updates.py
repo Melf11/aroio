@@ -31,6 +31,15 @@ def test_pick_release_by_channel():
     assert updates.pick_release(releases, "stable", "0.2.0") is None
 
 
+
+def test_beta_install_follows_betas_on_stable_channel():
+    """0.2.0-beta.1 with the default channel "stable" found nothing while only betas existed."""
+    releases = [rel("v0.2.0-beta.2", pre=True), rel("v0.2.0-beta.1", pre=True)]
+    assert updates.pick_release(releases, "stable", "0.2.0-beta.1")["version"] == "0.2.0-beta.2"
+    assert updates.pick_release(releases, "stable", "0.1.0") is None
+    assert updates.pick_release(releases, "stable", "0.1.0-dev") is None
+
+
 def test_auto_install_only_at_night_and_on_releases():
     assert updates.auto_install_due(3, False, True, "1.0.0")
     assert not updates.auto_install_due(12, False, True, "1.0.0")

@@ -952,7 +952,8 @@ class RealWorld:
         return data
 
     async def check_update(self, channel):
-        """Newest fitting GitHub release (aroiod.updates), None when up to date or offline."""
+        """Newest fitting GitHub release (aroiod.updates), None when up to date.
+        ValueError (German, for the app) when GitHub cannot be asked."""
         from . import updates
         repo = os.environ.get("AROIO_UPDATE_REPO", updates.REPO)
         try:
@@ -962,11 +963,11 @@ class RealWorld:
                                           "User-Agent": "AroioOS"}) as r:
                     if r.status != 200:
                         log.warning("update check: HTTP %s", r.status)
-                        return None
+                        raise ValueError(f"Die Update-Suche bei GitHub ist fehlgeschlagen (HTTP {r.status}).")
                     releases = await r.json()
-        except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as exc:
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             log.warning("update check: %s", exc)
-            return None
+            raise ValueError("GitHub ist nicht erreichbar. Hat der Aroio Internet?") from exc
         found = updates.pick_release(releases, channel, self.version)
         self._update = found
         return found

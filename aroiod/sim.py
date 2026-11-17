@@ -472,7 +472,9 @@ class SimWorld:
     # ── updates ──
     async def check_update(self, channel):
         await asyncio.sleep(0.2 if self.fast else 1.2)
-        if not self.internet or not self.update_version:
+        if not self.internet:
+            raise ValueError("GitHub ist nicht erreichbar. Hat der Aroio Internet?")
+        if not self.update_version:
             return None
         notes = ["Raumkorrektur: genauere Messung bei sehr kleinen Räumen",
                  "Lyrion: Albumansicht lädt schneller", "Fehlerbehebungen"]

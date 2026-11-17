@@ -1,6 +1,8 @@
 """Updates from GitHub releases: which release fits the device and its channel.
 
 Stable = the newest release that is not a pre-release, beta = the newest of all.
+A device running a pre-release stays on the beta track whatever its channel says:
+otherwise a beta install is never offered the next beta (or anything until a release).
 A release carries the RAUC bundle (`*.raucb`) as an asset; its body (Markdown)
 gives the notes shown in the app (bullet lines).
 """
@@ -59,10 +61,12 @@ def notes_from_body(body, limit=8):
 def pick_release(releases, channel, current):
     """The release to offer (or None): newest fitting the channel, newer than current, with a bundle."""
     best = None
+    cur = parse_version(current)
+    on_beta = channel == "beta" or bool(cur and len(cur[3]) > 1 and is_release(current))
     for r in releases:
         if r.get("draft"):
             continue
-        if r.get("prerelease") and channel != "beta":
+        if r.get("prerelease") and not on_beta:
             continue
         version = (r.get("tag_name") or "").lstrip("v")
         bundle = next((a for a in r.get("assets", []) if a.get("name", "").endswith(".raucb")), None)

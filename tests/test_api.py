@@ -177,6 +177,14 @@ async def test_update_and_reboot(client, device):
     assert device.update["current"] == "0.2.0"
 
 
+
+async def test_update_check_offline_says_so(client, device):
+    await post(client, "/sim/internet", {"on": False})
+    body = await post(client, "/system/update-check", status=400)
+    assert "nicht erreichbar" in body["error"]
+    assert (await state(client))["update"]["state"] == "idle"
+
+
 async def test_services_login(client, device):
     body = await post(client, "/services/tidal/login", {"action": "start"})
     assert len(body["code"]) == 5

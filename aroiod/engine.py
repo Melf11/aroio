@@ -861,7 +861,12 @@ class Device:
     async def check_update(self):
         self.update["state"] = "checking"
         self.publish_update()
-        found = await self.world.check_update(self.config.get("update.channel"))
+        try:
+            found = await self.world.check_update(self.config.get("update.channel"))
+        except Exception:
+            self.update["state"] = "idle"
+            self.publish_update()
+            raise
         self.update.update(state="idle", available=found["version"] if found else None,
                            notes=found["notes"] if found else [], checked=time.time())
         self.publish_update()
