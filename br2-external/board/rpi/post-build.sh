@@ -36,6 +36,10 @@ fi
 
 # not needed and slows down the boot by up to 2 minutes without network
 ln -sf /dev/null "$TARGET/etc/systemd/system/systemd-networkd-wait-online.service"
+# Programs ask systemd-resolved (stub 127.0.0.53), not the upstream servers directly: only
+# resolved asks each server over its own link (LAN and WLAN in different networks) and
+# falls over to the next one. Buildroot links the upstream list.
+ln -snf ../run/systemd/resolve/stub-resolv.conf "$TARGET/etc/resolv.conf"
 # iwd and bluetoothd keep their state on /data via systemd BindPaths (see *.service.d/aroio.conf)
 rm -rf "$TARGET/var/lib/iwd"
 mkdir -p "$TARGET/var/lib/mpd"   # Buildroot moves /var to /usr/share/factory/var (read-only root)

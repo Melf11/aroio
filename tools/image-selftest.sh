@@ -60,6 +60,7 @@ done
 grep -q "^pulse:" "$R/etc/passwd" || { echo "Benutzer pulse fehlt (aroio-pulse startet nicht)"; fail=1; }
 # only Avahi speaks mDNS: a second stack in systemd-resolved makes aroio.local unreliable
 grep -q "^MulticastDNS=no" "$R/etc/systemd/resolved.conf.d/aroio.conf" 2>/dev/null || { echo "systemd-resolved macht noch mDNS"; fail=1; }
+[ "$(readlink "$R/etc/resolv.conf")" = "../run/systemd/resolve/stub-resolv.conf" ] || { echo "/etc/resolv.conf umgeht systemd-resolved (DNS bei LAN+WLAN kaputt)"; fail=1; }
 # same DHCP identity after every restart (machine-id is new on every boot): same IP address
 grep -q "^ClientIdentifier=mac" "$R/etc/systemd/network/20-wired.network" || { echo "DHCP-Kennung wechselt bei jedem Start (neue IP)"; fail=1; }
 grep -q "^ConditionPathExists=!/data/aroio/wifi-off" "$R/usr/lib/systemd/system/iwd.service.d/wifi-off.conf" 2>/dev/null || { echo "WLAN-Schalter wirkt nach Neustart nicht (iwd-Drop-in fehlt)"; fail=1; }

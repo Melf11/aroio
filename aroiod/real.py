@@ -685,7 +685,10 @@ class RealWorld:
         out["logs/kernel.txt"] = "\n".join(self.logs("kernel"))
         for name, cmd in (("audio/cards.txt", ["cat", "/proc/asound/cards"]), ("audio/hw_params.txt",
                           ["aplay", "--duration=1", "-D", self.dac_device, "--dump-hw-params", "/dev/zero"]),
-                          ("system/ip.txt", ["ip", "addr"]), ("system/failed.txt", ["systemctl", "--failed", "--no-pager"]),
+                          ("system/ip.txt", ["ip", "addr"]), ("system/route.txt", ["ip", "route"]),
+                          ("system/dns.txt", ["resolvectl", "status", "--no-pager"]),
+                          ("system/resolv.conf.txt", ["cat", "/etc/resolv.conf"]),
+                          ("system/dns-github.txt", ["resolvectl", "query", "--no-pager", "api.github.com"]), ("system/failed.txt", ["systemctl", "--failed", "--no-pager"]),
                           ("system/boot-time.txt", ["systemd-analyze"])):
             try:
                 r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
