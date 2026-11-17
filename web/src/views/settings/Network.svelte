@@ -22,6 +22,22 @@
       toast(text.trim() ? t('Proxy gespeichert.') : t('Proxy entfernt.'), 'ok');
     } catch (err) { proxyError = err.message; } finally { proxyBusy = false; }
   }
+  let caBusy = $state(false), caError = $state('');
+  async function uploadCa(e) {
+    const file = e.currentTarget.files?.[0];
+    e.currentTarget.value = '';
+    if (!file) return;
+    caBusy = true; caError = ''; testResult = null;
+    const form = new FormData();
+    form.append('file', file, file.name);
+    try { await api.upload('/network/proxy-ca', form); toast(t('Zertifikat gespeichert.'), 'ok'); }
+    catch (err) { caError = err.message; } finally { caBusy = false; }
+  }
+  async function removeCa() {
+    caBusy = true; caError = ''; testResult = null;
+    try { await api.del('/network/proxy-ca'); toast(t('Zertifikat entfernt.'), 'ok'); }
+    catch (err) { caError = err.message; } finally { caBusy = false; }
+  }
   async function testInternet() {
     testing = true; testResult = null;
     try { await api.post('/network/internet-test'); testResult = { ok: true, text: t('Internet erreichbar.') }; }
@@ -97,6 +113,19 @@
         {#if n.proxy?.set}<button class="btn" type="button" disabled={proxyBusy} onclick={() => saveProxy(null, '')}>{t('Proxy entfernen')}</button>{/if}
       </div>
     </form>
+    <div class="card stack proxy-ca">
+      <h3 class="cert-title">{t('Firmenzertifikat')}</h3>
+      <p class="muted small">{t('Nur nötig, wenn der Proxy verschlüsselte Verbindungen prüft (TLS-Inspektion) und Downloads mit „Zertifikat nicht vertrauenswürdig“ scheitern. Das Stammzertifikat bekommst du von deiner IT oder exportierst es aus der Schlüsselbundverwaltung bzw. dem Zertifikatsspeicher deines Firmenrechners.')}</p>
+      {#if n.proxy?.ca?.length}<p>{t('Hinterlegt: {names}', { names: n.proxy.ca.join(', ') })}</p>{/if}
+      <div class="row wrap">
+        <label class="btn file-btn" class:busy={caBusy}>
+          {n.proxy?.ca?.length ? t('Anderes Zertifikat wählen') : t('Zertifikat wählen')}
+          <input class="sr-only" type="file" accept=".crt,.cer,.pem,.der" disabled={caBusy} onchange={uploadCa} aria-describedby={caError ? 'ca-err' : undefined} />
+        </label>
+        {#if n.proxy?.ca?.length}<button class="btn" type="button" disabled={caBusy} onclick={removeCa}>{t('Zertifikat entfernen')}</button>{/if}
+      </div>
+      {#if caError}<span id="ca-err" class="error-text" role="alert">{caError}</span>{/if}
+    </div>
     <div class="test">
       <button class="btn" type="button" onclick={testInternet} disabled={testing}>{#if testing}<LoaderCircle size={18} class="spin" aria-hidden="true" />{t('Teste …')}{:else}{t('Internetverbindung testen')}{/if}</button>
       <p role="status" class="small">{#if testResult}<span class={testResult.ok ? 'ok-text' : 'error-text'}>{testResult.ok ? '✓ ' : '✗ '}{testResult.text}</span>{/if}</p>
@@ -145,6 +174,11 @@
   .addr { margin: 8px 4px 0; }
   .top { margin-top: 12px; }
   .wrap { flex-wrap: wrap; gap: 8px; }
+  .cert-title { font-size: 1rem; margin: 0; }
+  .file-btn { cursor: pointer; }
+  .file-btn:focus-within { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .file-btn.busy { opacity: .6; pointer-events: none; }
+  .proxy-ca { margin-top: 12px; }
   .test { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
   .ok-text { color: var(--ok); }
   .nets { margin-top: 12px; }

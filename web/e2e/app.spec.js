@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import fs from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 
 const api = (request, path, data, method = 'post') => request[method]('/api/v1' + path, { data });
@@ -366,6 +367,47 @@ test('Kopfhörer-Korrektur im Expertenmodus', async ({ page, request }) => {
   await expect(page.getByText('aktiv', { exact: true })).toBeVisible({ timeout: 15000 });
   const s = await (await api(request, '/state', undefined, 'get')).json();
   expect(s.dsp.presets.find((p) => p.id === s.dsp.active_preset).name).toBe('Kopfhörer: AKG K701');
+});
+
+// stereo WAV, 48 kHz, 16 bit: an impulse (like a file from the headphone project)
+function stereoWav(frames = 2048) {
+  const b = Buffer.alloc(44 + frames * 4);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + frames * 4, 4); b.write('WAVEfmt ', 8);
+  b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(2, 22); b.writeUInt32LE(48000, 24);
+  b.writeUInt32LE(48000 * 4, 28); b.writeUInt16LE(4, 32); b.writeUInt16LE(16, 34);
+  b.write('data', 36); b.writeUInt32LE(frames * 4, 40);
+  b.writeInt16LE(16000, 44); b.writeInt16LE(16000, 46);
+  return b;
+}
+
+test('Stereo-WAV aus dem Kopfhörer-Projekt hochladen', async ({ page, request }) => {
+  await fresh(request);
+  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
+  await page.goto('/klang');
+  await page.getByRole('link', { name: 'FIR-Filter importieren und Kopfhörer-Korrektur' }).click();
+  await page.getByLabel(/Dateien wählen/).setInputFiles({ name: 'Sennheiser_HD_600-filters-48k.wav', mimeType: 'audio/wav', buffer: stereoWav() });
+  await expect(page.getByText('Stereo · alle Abtastraten')).toBeVisible();
+  await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Sennheiser HD 600');
+  await axe(page, 'stereo-wav');
+  await page.getByRole('button', { name: 'Importieren' }).click();
+  await expect(page).toHaveURL(/\/klang\/preset\//, { timeout: 15000 });
+  const s = await (await api(request, '/state', undefined, 'get')).json();
+  const preset = s.dsp.presets.find((p) => p.name === 'Sennheiser HD 600');
+  expect(preset).toBeTruthy();
+});
+
+test('Firmenzertifikat für den Proxy hinterlegen', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/netzwerk');
+  const pem = fs.readFileSync(new URL('../../tests/data/test-root-ca.pem', import.meta.url));
+  const leaf = fs.readFileSync(new URL('../../tests/data/test-server.pem', import.meta.url));
+  await page.getByLabel('Zertifikat wählen').setInputFiles({ name: 'webseite.pem', mimeType: 'application/x-pem-file', buffer: leaf });
+  await expect(page.getByRole('alert').filter({ hasText: 'kein Stammzertifikat' })).toBeVisible();
+  await axe(page, 'firmenzertifikat');
+  await page.getByLabel('Zertifikat wählen').setInputFiles({ name: 'firma.cer', mimeType: 'application/x-x509-ca-cert', buffer: pem });
+  await expect(page.getByText('Hinterlegt: Testfirma Root CA')).toBeVisible();
+  await page.getByRole('button', { name: 'Zertifikat entfernen' }).click();
+  await expect(page.getByText(/^Hinterlegt:/)).toHaveCount(0);
 });
 
 test('Anleitung: Aroio als App auf den Home-Bildschirm', async ({ page, request }) => {

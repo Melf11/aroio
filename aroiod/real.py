@@ -696,7 +696,8 @@ class RealWorld:
         cmd = ["journalctl", "-b", "--no-pager", "-n", "300", "-o", "short"]
         for u in self.UNITS[unit]:
             cmd += ["-u", u]
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout.splitlines()
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10).stdout
+        return _redact(out).splitlines()
 
     def diagnostics_files(self):
         """Extra files for the diagnosis package (like aroio_prepare_logs in 5.1)."""
@@ -810,20 +811,34 @@ class RealWorld:
         self._spawn(_run("systemctl", "try-restart", *PROXY_UNITS))
 
     def _proxy_write(self, full):
+        """proxy.env and aroiod's own environment; with a company root certificate also
+        ca-bundle.pem (system certificates plus it) for every program."""
         from . import proxy
-        env = proxy.environment(full)
-        for key in proxy.environment("x"):
+        from .store import atomic_write_bytes
+        cafile = None
+        ca = self.device.data / proxy.CA_FILE
+        try:
+            if ca.is_file():
+                cafile = self.device.data / proxy.BUNDLE_FILE
+                atomic_write_bytes(cafile, proxy.bundle(ca.read_text()).encode())
+            else:
+                (self.device.data / proxy.BUNDLE_FILE).unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("ca-bundle: %s", exc)
+            cafile = None
+        env = proxy.environment(full, cafile)
+        for key in proxy.PROXY_KEYS + proxy.CA_KEYS:
             if key in env:
                 os.environ[key] = env[key]
             else:
                 os.environ.pop(key, None)
         try:
-            if full:
+            if env:
                 PROXY_ENV.parent.mkdir(parents=True, exist_ok=True)
                 tmp = PROXY_ENV.with_name(PROXY_ENV.name + ".tmp")
                 fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
                 with os.fdopen(fd, "w") as fh:
-                    fh.write(proxy.env_file(full))
+                    fh.write(proxy.env_file(full, cafile))
                 os.replace(tmp, PROXY_ENV)
             else:
                 PROXY_ENV.unlink(missing_ok=True)
@@ -1001,7 +1016,7 @@ class RealWorld:
                             break
                     data = bytes(data)
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            log.warning("fetch %s: %r", url, exc)
+            log.warning("fetch %s: %s", url, _redact(repr(exc)))
             raise ValueError(_internet_error(exc)) from exc
         if len(data) > max_bytes:
             raise ValueError("Datei ist zu groß.")
@@ -1153,8 +1168,15 @@ PROXY_UNITS = ("aroio-soloist.service", "mpd.service", "upmpdcli.service")
 
 
 def _internet_session(**kw):
-    """aiohttp session for the internet: honours the proxy variables (trust_env)."""
-    return aiohttp.ClientSession(trust_env=True, **kw)
+    """aiohttp session for the internet: honours the proxy variables (trust_env) and the
+    company root certificate (a fresh SSL context reads SSL_CERT_FILE)."""
+    from . import proxy
+    return aiohttp.ClientSession(trust_env=True, connector=aiohttp.TCPConnector(ssl=proxy.ssl_context()), **kw)
+
+
+def _redact(text):
+    from . import proxy
+    return proxy.redact(text)
 
 
 def _internet_error(exc, what="GitHub"):
@@ -1165,6 +1187,13 @@ def _internet_error(exc, what="GitHub"):
         return f"Der Proxy hat die Verbindung abgelehnt (HTTP {exc.status})."
     if isinstance(exc, aiohttp.ClientProxyConnectionError):
         return "Der Proxy ist nicht erreichbar. Adresse und Port prüfen."
+    if isinstance(exc, aiohttp.ClientConnectorCertificateError):
+        if os.environ.get("SSL_CERT_FILE"):
+            return (f"Das Zertifikat von {what} ist nicht vertrauenswürdig, auch nicht mit dem "
+                    "hinterlegten Firmenzertifikat. Ist es das richtige Stammzertifikat?")
+        return (f"Das Zertifikat von {what} ist nicht vertrauenswürdig. Wahrscheinlich prüft der "
+                "Proxy verschlüsselte Verbindungen (TLS-Inspektion): Hinterlege das Stammzertifikat "
+                "deiner Firma unter Einstellungen › Netzwerk › Proxy.")
     if os.environ.get("https_proxy"):
         return f"{what} ist über den Proxy nicht erreichbar."
     return f"{what} ist nicht erreichbar. Hat der Aroio Internet?"

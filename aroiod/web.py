@@ -396,29 +396,36 @@ async def dsp_compare(request):
 @routes.post(A + "/dsp/import")
 async def dsp_import(request):
     """multipart: name, files... File names like Acourate: <Name>L96.dbl, or
-    field names L_96000 / R_96000."""
+    field names L_96000 / R_96000, or a single stereo WAV (converted for every rate)."""
     reader = await request.multipart()
-    name, files = "Importierter Filter", {}
+    name, given, files, stereo = "Importierter Filter", "", {}, []
     while True:
         part = await reader.next()
         if part is None:
             break
         if part.name == "name":
-            name = (await part.text()).strip()[:40] or name
+            given = (await part.text()).strip()[:40]
+            name = given or name
             continue
         data = await part.read(decode=False)
         if len(data) > 16 * 1024 * 1024:
             raise ValueError("Datei zu groß (höchstens 16 MB)")
         m = re.fullmatch(r"([LR])_(\d+)", part.name or "")
+        fm = FILTER_RE.match(part.filename or "")
         if m:
             ch, rate = m[1], int(m[2])
-        else:
-            fm = FILTER_RE.match(part.filename or "")
-            if not fm:
-                raise ValueError(f"„{part.filename}“: Kanal und Abtastrate nicht erkennbar "
-                                 "(Beispiel: WohnzimmerL96.dbl)")
+        elif fm:
             ch, rate = fm["ch"], RATE_TOKENS[int(fm["rate"])]
+        else:
+            stereo.append((part.filename or "filter.wav", data))
+            continue
         files[(ch, rate)] = (part.filename or f"{ch}{rate}.dbl", data)
+    if stereo:
+        # one stereo WAV (e.g. from the headphone project): left and right in one file
+        if files or len(stereo) > 1:
+            raise ValueError("Eine Stereo-WAV bitte allein hochladen, ohne weitere Dateien.")
+        preset = await dev(request).import_stereo_wav(given, *stereo[0])
+        return ok({"preset": preset["id"], "warnings": []})
     if not files:
         raise ValueError("Keine Dateien empfangen")
     preset, problems = dev(request).import_fir(name, files)
@@ -502,6 +509,28 @@ async def network_proxy(request):
     """{"url": "http://user:pass@proxy:port"} sets the proxy, "" removes it."""
     d, data = dev(request), await body(request)
     d.set_proxy(str(data.get("url", "")))
+    return ok({"proxy": d.hub.snapshot()["network"]["proxy"]})
+
+
+@routes.post(A + "/network/proxy-ca")
+async def network_proxy_ca(request):
+    """multipart "file": the company's root certificate (PEM or DER) for TLS-inspecting proxies."""
+    reader = await request.multipart()
+    data = None
+    while (part := await reader.next()) is not None:
+        if part.name == "file":
+            data = await part.read(decode=False)
+    if not data or len(data) > 512 * 1024:
+        raise ValueError("Bitte eine Zertifikatsdatei wählen (höchstens 512 KB).")
+    d = dev(request)
+    d.set_proxy_ca(data)
+    return ok({"proxy": d.hub.snapshot()["network"]["proxy"]})
+
+
+@routes.delete(A + "/network/proxy-ca")
+async def network_proxy_ca_delete(request):
+    d = dev(request)
+    d.set_proxy_ca(None)
     return ok({"proxy": d.hub.snapshot()["network"]["proxy"]})
 
 

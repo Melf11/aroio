@@ -540,7 +540,7 @@ async def test_proxy_setting(client, device):
     r = await client.post("/api/v1/network/proxy", json={"url": "https://proxy:8080"})
     assert r.status == 400 and (await r.json())["field"] == "network.proxy"
     body = await post(client, "/network/proxy", {"url": "http://max:geheim@proxy.firma.de:8080"})
-    assert body["proxy"] == {"set": True, "display": "http://max:••••@proxy.firma.de:8080"}
+    assert body["proxy"] == {"set": True, "display": "http://max:••••@proxy.firma.de:8080", "ca": []}
     assert device.world.proxy == "http://max:geheim@proxy.firma.de:8080"
     assert device.secrets.get("proxy.password") == "geheim"
     # the password never reaches the app
@@ -552,4 +552,42 @@ async def test_proxy_setting(client, device):
     assert "Passwort" in body["error"]
     await post(client, "/network/proxy", {"url": ""})
     assert device.world.proxy == "" and not device.secrets.has("proxy.password")
-    assert (await state(client))["network"]["proxy"] == {"set": False, "display": ""}
+    assert (await state(client))["network"]["proxy"] == {"set": False, "display": "", "ca": []}
+
+
+async def test_proxy_company_certificate(client, device):
+    """TLS-inspecting proxies: the company's root certificate can be added and removed."""
+    from pathlib import Path
+    pem = (Path(__file__).parent / "data" / "test-root-ca.pem").read_bytes()
+    form = aiohttp.FormData()
+    form.add_field("file", pem, filename="firma.cer")
+    r = await client.post("/api/v1/network/proxy-ca", data=form)
+    assert r.status == 200, await r.text()
+    assert (await state(client))["network"]["proxy"]["ca"] == ["Testfirma Root CA"]
+    assert (device.data / "proxy-ca.pem").is_file()
+    form = aiohttp.FormData()
+    form.add_field("file", (Path(__file__).parent / "data" / "test-server.pem").read_bytes(), filename="web.pem")
+    r = await client.post("/api/v1/network/proxy-ca", data=form)
+    assert r.status == 400 and "Stammzertifikat" in (await r.json())["error"]
+    r = await client.delete("/api/v1/network/proxy-ca")
+    assert r.status == 200 and (await state(client))["network"]["proxy"]["ca"] == []
+
+
+async def test_import_stereo_wav(client, device):
+    """A single stereo WAV (e.g. downloaded from the headphone project) becomes a preset for every rate."""
+    from aroiod.sim import sim_headphone_wav
+    form = aiohttp.FormData()
+    form.add_field("name", "")
+    form.add_field("file", sim_headphone_wav("x"), filename="Sennheiser_HD_600-filters-48k (2).wav")
+    r = await client.post("/api/v1/dsp/import", data=form)
+    body = await r.json()
+    assert r.status == 200, body
+    preset = next(p for p in device.config.data["dsp"]["presets"] if p["id"] == body["preset"])
+    assert preset["name"] == "Sennheiser HD 600" and preset["origin"] == "import"
+    assert sorted(int(k) for k in preset["fir"]) == [44100, 48000, 88200, 96000, 176400, 192000]
+    # not mixed with per-channel files
+    form = aiohttp.FormData()
+    form.add_field("file", sim_headphone_wav("x"), filename="a.wav")
+    form.add_field("file", b"\0" * 64, filename="RaumL96.dbl")
+    r = await client.post("/api/v1/dsp/import", data=form)
+    assert r.status == 400 and "allein" in (await r.json())["error"]

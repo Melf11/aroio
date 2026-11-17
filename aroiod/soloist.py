@@ -98,7 +98,9 @@ def parse_version(line):
 def _open(req, timeout):
     """urlopen with the proxy as it is now: urllib.request.urlopen builds its opener once and
     keeps the proxy of that moment, so a proxy entered later would be ignored."""
-    return urllib.request.build_opener().open(req, timeout=timeout)
+    from . import proxy
+    https = urllib.request.HTTPSHandler(context=proxy.ssl_context())   # company certificate, if any
+    return urllib.request.build_opener(https).open(req, timeout=timeout)
 
 
 def _idle():

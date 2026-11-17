@@ -94,16 +94,18 @@ def for_rate(taps, rate, source_rate=SOURCE_RATE, n_source=65536):
     return trim(_minimum_phase(10 ** (target / 20), n))
 
 
-def build(data):
-    """WAV bytes -> ({rate: {"L": taps, "R": taps}}, peak gain in dB)."""
+def build(data, source_rates=(SOURCE_RATE,)):
+    """WAV bytes -> ({rate: {"L": taps, "R": taps}}, peak gain in dB). The project's files
+    are 48 kHz; an uploaded stereo filter may have any rate of RATES."""
     rate, frames = dsp.read_wav_frames(data)
-    if rate != SOURCE_RATE:
-        raise dsp.FilterFileError(f"Filter hat {rate} Hz, erwartet sind {SOURCE_RATE} Hz")
+    if rate not in source_rates:
+        expected = " oder ".join(f"{r} Hz" for r in source_rates)
+        raise dsp.FilterFileError(f"Filter hat {rate} Hz, erwartet sind {expected}")
     left = frames[:, 0]
     right = frames[:, 1] if frames.shape[1] > 1 else left
     out, peak = {}, -120.0
     for r in RATES:
-        pair = {"L": for_rate(left, r), "R": for_rate(right, r)}
+        pair = {"L": for_rate(left, r, rate), "R": for_rate(right, r, rate)}
         for t in pair.values():
             if not np.all(np.isfinite(t)):
                 raise dsp.FilterFileError("Filter enthält ungültige Werte")

@@ -1,8 +1,10 @@
 """Functions taken over from AroioOS 5.1 and the rest of the gap list."""
 
 import asyncio
+import types
 import zipfile
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 
@@ -544,6 +546,7 @@ def test_real_proxy_env(monkeypatch, tmp_path):
     for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY"):
         monkeypatch.delenv(k, raising=False)
     w = real.RealWorld.__new__(real.RealWorld)
+    w.device = types.SimpleNamespace(data=tmp_path)
     w._proxy_write("http://u:p@proxy:8080")
     f = tmp_path / "proxy.env"
     assert f.stat().st_mode & 0o777 == 0o600 and "HTTPS_PROXY=http://u:p@proxy:8080" in f.read_text()
@@ -578,3 +581,68 @@ def test_signal_frames_are_seamless():
         jump = np.abs(np.diff(x[191000:193000, 0])).max()                    # block border at 4 s
         typical = np.abs(np.diff(x[100000:120000, 0])).max()
         assert jump <= typical * 1.01
+
+
+DATA = Path(__file__).parent / "data"
+
+
+def test_company_certificate_parsing():
+    import ssl
+    from aroiod import proxy
+    from aroiod.config import Invalid
+    pem = (DATA / "test-root-ca.pem").read_text()
+    assert proxy.parse_ca(pem)[1] == ["Testfirma Root CA"]
+    assert proxy.parse_ca(ssl.PEM_cert_to_DER_cert(pem))[1] == ["Testfirma Root CA"]   # .cer from Keychain
+    for bad in ((DATA / "test-server.pem").read_text(), b"kein Zertifikat", b""):
+        with pytest.raises(Invalid):
+            proxy.parse_ca(bad)
+    assert pem.strip().splitlines()[1] in proxy.bundle(proxy.parse_ca(pem)[0])
+
+
+def test_proxy_password_never_logged(monkeypatch):
+    from aroiod import proxy
+    monkeypatch.setenv("https_proxy", "http://max:g%24heim99@proxy:8080")
+    text = proxy.redact("ConnectionKey(proxy_auth=BasicAuth(login='max', password='g$heim99')) "
+                        "http://max:g%24heim99@proxy:8080 g$heim99")
+    assert "heim99" not in text and "login='max'" in text
+
+
+async def test_tls_inspection_needs_company_certificate(monkeypatch, tmp_path):
+    """A proxy that opens HTTPS signs with the company's root: unknown at first (a clear
+    message), trusted once the certificate is added, for aroiod and in proxy.env."""
+    import os
+    import ssl
+
+    from aiohttp import web
+    from aroiod import real
+    for k in ("SSL_CERT_FILE", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "https_proxy", "HTTPS_PROXY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(real, "PROXY_ENV", tmp_path / "proxy.env")
+    app = web.Application()
+
+    async def zen(_request):
+        return web.Response(text="ok")
+    app.router.add_get("/zen", zen)
+    ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ctx.load_cert_chain(DATA / "test-server.pem", DATA / "test-server.key")
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0, ssl_context=ctx)
+    await site.start()
+    url = f"https://localhost:{site._server.sockets[0].getsockname()[1]}/zen"
+    try:
+        w = real.RealWorld.__new__(real.RealWorld)
+        w.device = types.SimpleNamespace(data=tmp_path)
+        with pytest.raises(ValueError, match="TLS-Inspektion"):
+            await w.fetch(url)
+        (tmp_path / "proxy-ca.pem").write_text((DATA / "test-root-ca.pem").read_text())
+        w._proxy_write("")
+        assert await w.fetch(url) == b"ok"
+        bundle = tmp_path / "ca-bundle.pem"
+        assert os.environ["SSL_CERT_FILE"] == str(bundle)
+        assert f"SSL_CERT_FILE={bundle}\n" in (tmp_path / "proxy.env").read_text()
+        (tmp_path / "proxy-ca.pem").unlink()
+        w._proxy_write("")
+        assert "SSL_CERT_FILE" not in os.environ and not bundle.exists() and not (tmp_path / "proxy.env").exists()
+    finally:
+        await runner.cleanup()

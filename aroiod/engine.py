@@ -277,6 +277,23 @@ class Device:
             self.world.proxy_apply(self.proxy_url())
         self.publish_network()
 
+    def set_proxy_ca(self, data):
+        """Company root certificate for TLS-inspecting proxies (bytes as uploaded), None removes it."""
+        ca = self.data / proxy.CA_FILE
+        if data is None:
+            ca.unlink(missing_ok=True)
+        else:
+            pem, _names = proxy.parse_ca(data)
+            atomic_write_bytes(ca, pem.encode())
+        self.world.proxy_apply(self.proxy_url())
+        self.publish_network()
+
+    def proxy_ca_names(self):
+        try:
+            return proxy.ca_names((self.data / proxy.CA_FILE).read_text())
+        except OSError:
+            return []
+
     async def internet_test(self):
         """Reach the internet the way updates and downloads do (through the proxy, if set)."""
         await self.world.fetch(INTERNET_TEST_URL, max_bytes=4096)
@@ -285,7 +302,8 @@ class Device:
         status = self.world.network_status(self.config.data)
         p = self.config.data["network"]["proxy"]
         status["proxy"] = {"set": bool(p["url"]),
-                           "display": proxy.display(p["url"], p["user"], self.secrets.has("proxy.password"))}
+                           "display": proxy.display(p["url"], p["user"], self.secrets.has("proxy.password")),
+                           "ca": self.proxy_ca_names()}
         if self.netsetup:
             status.update(self.netsetup.status())
         if only_changed and status == getattr(self, "_network_published", None):
@@ -827,21 +845,41 @@ class Device:
         existing = next((p for p in self.config.data["dsp"]["presets"] if p.get("source") == path), None)
         if existing is None:
             data = await self.world.fetch(headphones.raw_url(path), headphones.MAX_BYTES)
-            filters, peak = await asyncio.get_event_loop().run_in_executor(None, headphones.build, data)
-            pid = "hp-" + uuid.uuid4().hex[:8]
-            fir = {}
-            for rate, pair in filters.items():
-                for ch, taps in pair.items():
-                    dst = f"{pid}_{ch}_{rate}.dbl"
-                    atomic_write_bytes(self.data / "filters" / dst, taps.astype("<f8").tobytes())
-                    fir.setdefault(str(rate), {})[ch] = dst
-            existing = {"id": pid, "name": f"Kopfhörer: {item['name']}"[:40], "kind": "fir", "origin": "headphone",
-                        "source": path, "fir": fir, "created": time.strftime("%Y-%m-%d"),
-                        # headroom for the boost (bass), so nothing clips
-                        "gain_db": -math.ceil(max(0.0, peak) * 2) / 2}
-            self.save_preset(existing, activate=False)
+            existing = await self._stereo_preset("hp-", f"Kopfhörer: {item['name']}", "headphone", data,
+                                                 source=path)
         self.patch_config({"dsp": {"active_preset": existing["id"], "enabled": True}})
         return existing
+
+    async def _stereo_preset(self, prefix, name, origin, data, source_rates=None, **extra):
+        """One stereo WAV filter -> FIR preset for every rate (aroiod.headphones.build)."""
+        from . import headphones
+        rates = source_rates or (headphones.SOURCE_RATE,)
+        filters, peak = await asyncio.get_event_loop().run_in_executor(None, headphones.build, data, rates)
+        pid = prefix + uuid.uuid4().hex[:8]
+        fir = {}
+        for rate, pair in filters.items():
+            for ch, taps in pair.items():
+                dst = f"{pid}_{ch}_{rate}.dbl"
+                atomic_write_bytes(self.data / "filters" / dst, taps.astype("<f8").tobytes())
+                fir.setdefault(str(rate), {})[ch] = dst
+        preset = {"id": pid, "name": name[:40], "kind": "fir", "origin": origin, **extra, "fir": fir,
+                  "created": time.strftime("%Y-%m-%d"),
+                  # headroom for the boost (bass), so nothing clips
+                  "gain_db": -math.ceil(max(0.0, peak) * 2) / 2}
+        self.save_preset(preset, activate=False)
+        return preset
+
+    async def import_stereo_wav(self, name, filename, data):
+        """A single stereo WAV without channel/rate in its name (e.g. a file from the headphone
+        project): redesigned for every rate like a downloaded headphone filter."""
+        from urllib.parse import unquote
+
+        from . import headphones
+        filename = unquote(filename)  # aiohttp clients percent-encode, browsers send it as is
+        if not filename.lower().endswith(".wav"):
+            raise ValueError(f"„{filename}“: Kanal und Abtastrate nicht erkennbar (Beispiel: WohnzimmerL96.dbl)")
+        return await self._stereo_preset("fir-", name or headphones.display_name(filename), "import", data,
+                                         source_rates=headphones.RATES)
 
     def import_fir(self, name, files):
         """files: {(channel, rate): (filename, bytes)} -> new FIR preset."""
@@ -1102,7 +1140,8 @@ class Device:
         if self.netsetup:
             self.netsetup.started = time.monotonic()      # grace period like after boot
             self.netsetup.attempt = {"state": "idle", "ssid": None, "error": None, "at": None}
-        had_proxy = bool(self.proxy_url())
+        had_proxy = bool(self.proxy_url()) or (self.data / proxy.CA_FILE).exists()
+        (self.data / proxy.CA_FILE).unlink(missing_ok=True)
         self.config.reset()
         self.secrets.delete_prefix("")
         if had_proxy:

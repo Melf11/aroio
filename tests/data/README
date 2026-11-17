@@ -1,0 +1,2 @@
+Test certificates (no real trust): a root CA (key discarded) and a server certificate for
+localhost/127.0.0.1 signed by it, like a company proxy doing TLS inspection.
