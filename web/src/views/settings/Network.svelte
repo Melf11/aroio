@@ -11,6 +11,22 @@
   let networks = $state(null), scanning = $state(false), chosen = $state(null), pw = $state(''), joining = $state(false), joinError = $state('');
   let lan = $state(null), lanErrors = $state({});
   let confirmOff = $state(false);
+  let proxyText = $state(''), proxyError = $state(''), proxyBusy = $state(false), testing = $state(false), testResult = $state(null);
+
+  async function saveProxy(e, text = proxyText) {
+    e?.preventDefault();
+    proxyBusy = true; proxyError = ''; testResult = null;
+    try {
+      await api.post('/network/proxy', { url: text });
+      proxyText = '';
+      toast(text.trim() ? t('Proxy gespeichert.') : t('Proxy entfernt.'), 'ok');
+    } catch (err) { proxyError = err.message; } finally { proxyBusy = false; }
+  }
+  async function testInternet() {
+    testing = true; testResult = null;
+    try { await api.post('/network/internet-test'); testResult = { ok: true, text: t('Internet erreichbar.') }; }
+    catch (err) { testResult = { ok: false, text: err.message }; } finally { testing = false; }
+  }
 
   async function setWifi(on) {
     confirmOff = false;
@@ -66,6 +82,26 @@
       </ul>
     {/if}
 
+    <h2 class="section-title">{t('Proxy')}</h2>
+    <form class="card stack" onsubmit={saveProxy}>
+      <p class="muted small">{t('Nur nötig, wenn das Netzwerk Internet nur über einen Proxy erlaubt (z. B. in Firmen). Gilt für Updates, Spotify, UPnP-Streams und Downloads wie die Kopfhörer-Korrektur.')}</p>
+      {#if n.proxy?.set}<p>{t('Aktiv: {proxy}', { proxy: n.proxy.display })}</p>{/if}
+      <div class="field"><label for="proxy">{n.proxy?.set ? t('Neue Proxy-Adresse') : t('Proxy-Adresse')}</label>
+        <input id="proxy" class="input mono" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false"
+               placeholder="http://benutzer:passwort@proxy.firma.de:8080" bind:value={proxyText} aria-invalid={!!proxyError}
+               aria-describedby="proxy-h" required />
+        <span id="proxy-h" class="hint">{t('Benutzer und Passwort nur, wenn der Proxy eine Anmeldung verlangt. Das Passwort bleibt auf dem Aroio.')}</span>
+        {#if proxyError}<span class="error-text" role="alert">{proxyError}</span>{/if}</div>
+      <div class="row wrap">
+        <button class="btn primary" type="submit" disabled={proxyBusy}>{t('Speichern')}</button>
+        {#if n.proxy?.set}<button class="btn" type="button" disabled={proxyBusy} onclick={() => saveProxy(null, '')}>{t('Proxy entfernen')}</button>{/if}
+      </div>
+    </form>
+    <div class="test">
+      <button class="btn" type="button" onclick={testInternet} disabled={testing}>{#if testing}<LoaderCircle size={18} class="spin" aria-hidden="true" />{t('Teste …')}{:else}{t('Internetverbindung testen')}{/if}</button>
+      <p role="status" class="small">{#if testResult}<span class={testResult.ok ? 'ok-text' : 'error-text'}>{testResult.ok ? '✓ ' : '✗ '}{testResult.text}</span>{/if}</p>
+    </div>
+
     {#if expert && lan}
       <h2 class="section-title">{t('LAN-Adresse (Experten)')}</h2>
       <form class="card stack" onsubmit={saveLan}>
@@ -108,6 +144,9 @@
   .st { display: flex; gap: 14px; align-items: center; padding: 14px 16px; }
   .addr { margin: 8px 4px 0; }
   .top { margin-top: 12px; }
+  .wrap { flex-wrap: wrap; gap: 8px; }
+  .test { margin-top: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ok-text { color: var(--ok); }
   .nets { margin-top: 12px; }
   .net { display: flex; width: 100%; gap: 12px; align-items: center; padding: 14px 16px; min-height: 56px; border: 0; background: none; text-align: left; }
   .net:hover { background: var(--surface-2); }

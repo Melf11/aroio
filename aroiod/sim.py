@@ -107,6 +107,7 @@ class SimWorld:
         self.noise_next = False
         self.too_loud_next = False
         self.internet = True
+        self.proxy = ""
         self.lan = True
         self.wifi_ssid = None
         self.lyrion_external = "192.168.1.10"
@@ -457,11 +458,19 @@ class SimWorld:
                       "Headphone_Old_Target_Curve_Response/AKG_K701-filters-48k.wav",
                       "Headphone_Old_Target_Curve_Response/Beyerdynamic_DT880-filters-48k.wav"]
 
+    def proxy_apply(self, full):
+        self.proxy = full
+        self.log("Proxy " + ("gesetzt (Spotify, UPnP, Updates, Downloads)" if full else "entfernt"))
+
     async def fetch(self, url, max_bytes=8 * 1024 * 1024):
         await asyncio.sleep(0 if self.fast else 0.6)
         if not self.internet:
-            raise ValueError("Keine Verbindung zu GitHub. Ist der Aroio mit dem Internet verbunden?")
-        from . import headphones
+            raise ValueError("GitHub ist nicht erreichbar. Hat der Aroio Internet?")
+        if "@" in (self.proxy or "") and ":falsch@" in self.proxy:
+            raise ValueError("Der Proxy verlangt eine Anmeldung, oder Benutzer/Passwort stimmen nicht.")
+        from . import engine, headphones
+        if url == engine.INTERNET_TEST_URL:
+            return b"Keep it logically awesome."
         if url == headphones.TREE_URL:
             return json.dumps({"tree": [{"path": p, "type": "blob"} for p in self.SIM_HEADPHONES]}).encode()
         name = url.rsplit("/", 1)[-1]

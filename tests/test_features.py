@@ -511,3 +511,42 @@ async def test_real_wifi_power(monkeypatch, tmp_path):
     assert ("systemctl", "start", "iwd.service") not in calls
     await w.wifi_power(True)
     assert real.wifi_enabled() and calls[-1] == ("systemctl", "start", "iwd.service")
+
+
+def test_proxy_address_parsing():
+    from aroiod import proxy
+    from aroiod.config import Invalid
+    assert proxy.parse("http://max:g3h$im@proxy.firma.de:8080") == ("http://proxy.firma.de:8080", "max", "g3h$im")
+    assert proxy.parse("proxy.firma.de:3128") == ("http://proxy.firma.de:3128", "", "")
+    assert proxy.parse("http://m%40x:p%3Aw@10.0.0.1:8080/") == ("http://10.0.0.1:8080", "m@x", "p:w")
+    assert proxy.parse("  ") == ("", "", "")
+    for bad in ("https://proxy:8080", "http://proxy", "http://proxy:99999", "http://proxy:80/pfad", "socks5://p:1080"):
+        with pytest.raises(Invalid):
+            proxy.parse(bad)
+    full = proxy.compose("http://proxy.firma.de:8080", "m@x", "p:w$ \"")
+    assert full == "http://m%40x:p%3Aw%24%20%22@proxy.firma.de:8080"
+    assert proxy.parse(full)[1:] == ("m@x", 'p:w$ "')
+    assert proxy.display("http://proxy.firma.de:8080", "max", True) == "http://max:••••@proxy.firma.de:8080"
+    env = proxy.env_file(full)
+    assert f"https_proxy={full}\n" in env and "NO_PROXY=localhost," in env and '"' not in env and " " not in env
+    assert proxy.env_file("") == ""
+
+
+def test_real_proxy_env(monkeypatch, tmp_path):
+    import os
+    from aroiod import real
+    calls = []
+
+    async def run(*a):
+        calls.append(a)
+    monkeypatch.setattr(real, "_run", run)
+    monkeypatch.setattr(real, "PROXY_ENV", tmp_path / "proxy.env")
+    for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY"):
+        monkeypatch.delenv(k, raising=False)
+    w = real.RealWorld.__new__(real.RealWorld)
+    w._proxy_write("http://u:p@proxy:8080")
+    f = tmp_path / "proxy.env"
+    assert f.stat().st_mode & 0o777 == 0o600 and "HTTPS_PROXY=http://u:p@proxy:8080" in f.read_text()
+    assert os.environ["https_proxy"] == "http://u:p@proxy:8080"
+    w._proxy_write("")
+    assert not f.exists() and "https_proxy" not in os.environ

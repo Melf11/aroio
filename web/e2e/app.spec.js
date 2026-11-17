@@ -403,3 +403,21 @@ test('WLAN ausschalten', async ({ page, request }) => {
   await expect(wlan).toHaveAttribute('aria-checked', 'false');
   await api(request, '/sim/lan', { on: true });
 });
+
+test('Proxy einrichten und Internet testen', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/netzwerk');
+  const field = page.getByLabel('Proxy-Adresse');
+  await field.fill('https://proxy.firma.de:8080');
+  await page.getByRole('button', { name: 'Speichern' }).first().click();
+  await expect(page.getByRole('alert')).toContainText('http://');
+  await field.fill('http://max:geheim@proxy.firma.de:8080');
+  await page.getByRole('button', { name: 'Speichern' }).first().click();
+  await expect(page.getByText('Aktiv: http://max:••••@proxy.firma.de:8080')).toBeVisible();
+  await expect(page.getByText('geheim')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Internetverbindung testen' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Internet erreichbar.' })).toBeVisible();
+  await axe(page, 'proxy');
+  await page.getByRole('button', { name: 'Proxy entfernen' }).click();
+  await expect(page.getByText(/^Aktiv:/)).toHaveCount(0);
+});

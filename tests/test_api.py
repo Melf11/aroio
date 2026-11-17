@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 import aiohttp
 import pytest
@@ -525,3 +526,22 @@ async def test_wifi_switch(client, device):
     await client.patch("/api/v1/config", json={"network": {"wifi": {"enabled": True}}})
     n = (await state(client))["network"]
     assert n["wifi"]["enabled"] and n["wifi"]["connected"]
+
+
+async def test_proxy_setting(client, device):
+    r = await client.post("/api/v1/network/proxy", json={"url": "https://proxy:8080"})
+    assert r.status == 400 and (await r.json())["field"] == "network.proxy"
+    body = await post(client, "/network/proxy", {"url": "http://max:geheim@proxy.firma.de:8080"})
+    assert body["proxy"] == {"set": True, "display": "http://max:••••@proxy.firma.de:8080"}
+    assert device.world.proxy == "http://max:geheim@proxy.firma.de:8080"
+    assert device.secrets.get("proxy.password") == "geheim"
+    # the password never reaches the app
+    assert "geheim" not in json.dumps(await state(client)) and "geheim" not in await (await client.get("/api/v1/config")).text()
+    await post(client, "/network/internet-test")
+    # wrong password: the test says so
+    await post(client, "/network/proxy", {"url": "http://max:falsch@proxy.firma.de:8080"})
+    body = await post(client, "/network/internet-test", status=400)
+    assert "Passwort" in body["error"]
+    await post(client, "/network/proxy", {"url": ""})
+    assert device.world.proxy == "" and not device.secrets.has("proxy.password")
+    assert (await state(client))["network"]["proxy"] == {"set": False, "display": ""}

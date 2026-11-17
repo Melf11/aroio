@@ -497,6 +497,20 @@ async def network_wifi(request):
     return ok(result)
 
 
+@routes.post(A + "/network/proxy")
+async def network_proxy(request):
+    """{"url": "http://user:pass@proxy:port"} sets the proxy, "" removes it."""
+    d, data = dev(request), await body(request)
+    d.set_proxy(str(data.get("url", "")))
+    return ok({"proxy": d.hub.snapshot()["network"]["proxy"]})
+
+
+@routes.post(A + "/network/internet-test")
+async def network_internet_test(request):
+    await dev(request).internet_test()
+    return ok()
+
+
 @routes.post(A + "/bluetooth/pairing")
 async def bt_pairing(request):
     d = dev(request)

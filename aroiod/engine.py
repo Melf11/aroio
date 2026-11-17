@@ -17,7 +17,7 @@ import time
 import uuid
 from pathlib import Path
 
-from . import dsp, models
+from . import dsp, models, proxy
 from .config import RATES, Config, Invalid
 from .library import PROVIDERS, SimLibrary
 from .store import Secrets, atomic_write_bytes
@@ -48,6 +48,9 @@ def volume_db(percent):
     if percent <= 0:
         return None  # mute
     return round(-60.0 * (1 - percent / 100) ** 1.6, 1)
+
+
+INTERNET_TEST_URL = "https://api.github.com/zen"
 
 
 class Device:
@@ -259,8 +262,29 @@ class Device:
             "netjack": dict(c["sources"]["netjack"]),
         })
 
+    def proxy_url(self):
+        """The proxy with credentials, '' without one (never sent to the app)."""
+        p = self.config.data["network"]["proxy"]
+        return proxy.compose(p["url"], p["user"], self.secrets.get("proxy.password", ""))
+
+    def set_proxy(self, text):
+        url, user, password = proxy.parse(text)
+        before, stored = self.proxy_url(), dict(self.config.data["network"]["proxy"])
+        self.secrets.set("proxy.password", password)
+        self.patch_config({"network": {"proxy": {"url": url, "user": user}}})   # applies a new address
+        if stored == {"url": url, "user": user} and self.proxy_url() != before:  # only the password
+            self.world.proxy_apply(self.proxy_url())
+        self.publish_network()
+
+    async def internet_test(self):
+        """Reach the internet the way updates and downloads do (through the proxy, if set)."""
+        await self.world.fetch(INTERNET_TEST_URL, max_bytes=4096)
+
     def publish_network(self, only_changed=False):
         status = self.world.network_status(self.config.data)
+        p = self.config.data["network"]["proxy"]
+        status["proxy"] = {"set": bool(p["url"]),
+                           "display": proxy.display(p["url"], p["user"], self.secrets.has("proxy.password"))}
         if self.netsetup:
             status.update(self.netsetup.status())
         if only_changed and status == getattr(self, "_network_published", None):
@@ -699,6 +723,8 @@ class Device:
             self.publish_services()
         if "network" in changed:
             self.world.network_apply(after["network"])
+            if after["network"]["proxy"] != before["network"]["proxy"]:
+                self.world.proxy_apply(self.proxy_url())
             self.publish_network()
         # aroio.txt only when its lines change (e.g. model "auto" -> "RaspberryPi" does not)
         if "hardware" in changed and self._boot_lines(before["hardware"]) != self._boot_lines(after["hardware"]):
@@ -1032,8 +1058,11 @@ class Device:
         if self.netsetup:
             self.netsetup.started = time.monotonic()      # grace period like after boot
             self.netsetup.attempt = {"state": "idle", "ssid": None, "error": None, "at": None}
+        had_proxy = bool(self.proxy_url())
         self.config.reset()
         self.secrets.delete_prefix("")
+        if had_proxy:
+            self.world.proxy_apply("")
         self.library.favorites.clear()
         self.library.recent.clear()
         self.volume = self.config.get("audio.start_volume")

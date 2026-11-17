@@ -458,6 +458,7 @@ class RealWorld:
         self.soloist.start()
         self._spawn(self._bluetooth_start())
         self._spawn(self.wifi_power(self.device.config.get("network.wifi.enabled")))
+        self._proxy_write(self.device.proxy_url())
 
     async def _bluetooth_start(self):
         """Name, and pairing for 5 minutes after boot while nothing is paired yet."""
@@ -792,6 +793,34 @@ class RealWorld:
         if net["wifi"]["enabled"] != wifi_enabled():
             self._spawn(self.wifi_power(net["wifi"]["enabled"]))
 
+    def proxy_apply(self, full):
+        """New proxy: environment of aroiod, proxy.env for the units, restart the running
+        units that use it (try-restart leaves stopped ones alone)."""
+        self._proxy_write(full)
+        log.info("proxy %s", "set" if full else "removed")
+        self._spawn(_run("systemctl", "try-restart", *PROXY_UNITS))
+
+    def _proxy_write(self, full):
+        from . import proxy
+        env = proxy.environment(full)
+        for key in proxy.environment("x"):
+            if key in env:
+                os.environ[key] = env[key]
+            else:
+                os.environ.pop(key, None)
+        try:
+            if full:
+                PROXY_ENV.parent.mkdir(parents=True, exist_ok=True)
+                tmp = PROXY_ENV.with_name(PROXY_ENV.name + ".tmp")
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as fh:
+                    fh.write(proxy.env_file(full))
+                os.replace(tmp, PROXY_ENV)
+            else:
+                PROXY_ENV.unlink(missing_ok=True)
+        except OSError as exc:
+            log.warning("proxy.env: %s", exc)
+
     async def wifi_power(self, on):
         """WLAN on/off. Off = iwd stopped, no address, link down; the flag file keeps iwd
         from starting at the next boot (ConditionPathExists in its drop-in)."""
@@ -943,13 +972,14 @@ class RealWorld:
     async def fetch(self, url, max_bytes=8 * 1024 * 1024):
         """GET a file from the internet (headphone filters ...). German errors for the app."""
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60)) as s:
+            async with _internet_session(timeout=aiohttp.ClientTimeout(total=60)) as s:
                 async with s.get(url, headers={"User-Agent": "AroioOS", "Accept": "*/*"}) as r:
                     if r.status != 200:
                         raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
                     data = await r.content.read(max_bytes + 1)
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-            raise ValueError("Keine Verbindung zu GitHub. Ist der Aroio mit dem Internet verbunden?") from exc
+            log.warning("fetch %s: %r", url, exc)
+            raise ValueError(_internet_error(exc)) from exc
         if len(data) > max_bytes:
             raise ValueError("Datei ist zu groß.")
         return data
@@ -960,7 +990,7 @@ class RealWorld:
         from . import updates
         repo = os.environ.get("AROIO_UPDATE_REPO", updates.REPO)
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as s:
+            async with _internet_session(timeout=aiohttp.ClientTimeout(total=20)) as s:
                 async with s.get(updates.API.format(repo=repo),
                                  headers={"Accept": "application/vnd.github+json",
                                           "User-Agent": "AroioOS"}) as r:
@@ -970,7 +1000,7 @@ class RealWorld:
                     releases = await r.json()
         except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
             log.warning("update check: %s", exc)
-            raise ValueError("GitHub ist nicht erreichbar. Hat der Aroio Internet?") from exc
+            raise ValueError(_internet_error(exc)) from exc
         found = updates.pick_release(releases, channel, self.version)
         self._update = found
         return found
@@ -988,7 +1018,7 @@ class RealWorld:
         if found["size"] and free.f_bavail * free.f_frsize < found["size"] + 50_000_000:
             raise ValueError("Zu wenig Speicherplatz für das Update.")
         try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3600, sock_read=60)) as s:
+            async with _internet_session(timeout=aiohttp.ClientTimeout(total=3600, sock_read=60)) as s:
                 async with s.get(found["url"], headers={"User-Agent": "AroioOS"}) as r:
                     if r.status != 200:
                         raise ValueError(f"Download fehlgeschlagen (HTTP {r.status}).")
@@ -1016,7 +1046,7 @@ class RealWorld:
                 log.error("rauc install: %s", " | ".join(tail))
                 raise ValueError("Das Update ließ sich nicht installieren. Der Aroio läuft unverändert weiter.")
         except aiohttp.ClientError as exc:
-            raise ValueError(f"Download fehlgeschlagen: {exc}") from exc
+            raise ValueError(f"Download fehlgeschlagen: {_internet_error(exc)}") from exc
         finally:
             target.unlink(missing_ok=True)
 
@@ -1094,6 +1124,27 @@ class RealWorld:
 WLAN = "wlan0"
 HOTSPOT_IP = "192.168.4.1"
 WIFI_OFF_FLAG = Path("/data/aroio/wifi-off")
+PROXY_ENV = Path("/data/aroio/proxy.env")
+# units that fetch from the internet and read proxy.env (drop-ins *.service.d/proxy.conf)
+PROXY_UNITS = ("aroio-soloist.service", "mpd.service", "upmpdcli.service")
+
+
+def _internet_session(**kw):
+    """aiohttp session for the internet: honours the proxy variables (trust_env)."""
+    return aiohttp.ClientSession(trust_env=True, **kw)
+
+
+def _internet_error(exc, what="GitHub"):
+    """German text for a failed internet request, telling proxy trouble apart."""
+    if isinstance(exc, aiohttp.ClientHttpProxyError) and exc.status == 407:
+        return "Der Proxy verlangt eine Anmeldung, oder Benutzer/Passwort stimmen nicht."
+    if isinstance(exc, aiohttp.ClientHttpProxyError):
+        return f"Der Proxy hat die Verbindung abgelehnt (HTTP {exc.status})."
+    if isinstance(exc, aiohttp.ClientProxyConnectionError):
+        return "Der Proxy ist nicht erreichbar. Adresse und Port prüfen."
+    if os.environ.get("https_proxy"):
+        return f"{what} ist über den Proxy nicht erreichbar."
+    return f"{what} ist nicht erreichbar. Hat der Aroio Internet?"
 
 
 def wifi_enabled():

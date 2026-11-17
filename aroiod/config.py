@@ -24,6 +24,7 @@ VERSION = 2
 
 RATES = [44100, 48000, 88200, 96000, 176400, 192000]
 HOSTNAME_RE = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
+PROXY_RE = r"^(http://[^/@\s:]+(:[0-9]{1,5})?|http://\[[0-9a-fA-F:.]+\]:[0-9]{1,5})?$"
 IPV4_RE = r"^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$"
 
 
@@ -141,6 +142,8 @@ SCHEMA = {
         "lan": _ipcfg(),
         "wifi": dict(_ipcfg(), enabled=F(bool, True), ssid=F(str, "", maxlen=32)),
         "hotspot": F(str, "auto", choices=["auto", "off"]),
+        # HTTP proxy without the password (secrets: proxy.password); set via /network/proxy
+        "proxy": {"url": F(str, "", pattern=PROXY_RE, maxlen=220), "user": F(str, "", maxlen=100)},
     },
     "hardware": {
         "display_rotate": F(int, 0, choices=[0, 90, 180, 270]),
