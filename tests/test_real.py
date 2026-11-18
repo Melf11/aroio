@@ -344,3 +344,36 @@ def test_rauc_mounts_bundles_under_run():
     from aroiod import real
     assert real.RAUC_INSTALL == ("rauc", "--mount=/run/rauc", "install")
     assert "RAUC_INSTALL" in inspect.getsource(real.RealWorld.install_update)
+
+
+async def test_camilla_stays_stopped_while_no_player_has_the_loopback(monkeypatch):
+    """A config applied while nothing plays (e.g. a new preset) must not start CamillaDSP:
+    its capture end would pin the loopback to the old rate/format and PulseAudio
+    (Spotify) could not open it ("Resume failed, couldn't restore original sample settings")."""
+    from aroiod import real
+    calls = []
+    c = real.CamillaClient()
+
+    async def call(cmd, arg=None):
+        calls.append(cmd)
+    c.call = call
+    c._ws = object()
+    await c.set_config({"x": 1}, idle=True)
+    assert calls == ["Stop"] and c.config == {"x": 1}
+    calls.clear()
+    await c._resend()                                  # reconnect while idle: still stopped
+    assert "Stop" in calls and "SetConfigJson" not in calls
+    calls.clear()
+    await c.set_config({"x": 2}, idle=False)           # a player opened the loopback
+    assert calls == ["SetConfigJson"]
+
+    w = real.RealWorld.__new__(real.RealWorld)
+    w.camilla, spawned = c, []
+    w._spawn = lambda coro: (spawned.append(coro), coro.close())
+    seen = []
+    c.set_config = lambda cfg, idle=False: seen.append(idle) or call("x")
+    monkeypatch.setattr(real, "loopback_open", lambda: None)
+    w.camilla_apply({"y": 1})
+    monkeypatch.setattr(real, "loopback_open", lambda: (44100, "F32_LE"))
+    w.camilla_apply({"y": 2})
+    assert seen == [True, False]

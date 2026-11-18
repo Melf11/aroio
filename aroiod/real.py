@@ -206,6 +206,7 @@ class CamillaClient:
         self.url = url
         self.on_rate_change = on_rate_change
         self.config = None
+        self.idle = False           # config kept, CamillaDSP stopped until a player opens the loopback
         self.volume_db = 0.0
         self.mute = False
         self.state = {"connected": False, "state": None, "load": None, "capture_rate": None, "clipped": 0}
@@ -265,7 +266,9 @@ class CamillaClient:
             await self.call("SetUpdateInterval", 50)
         except RuntimeError as exc:
             log.debug("SetUpdateInterval: %s", exc)
-        if self.config is not None:
+        if self.idle:
+            await self.call("Stop")
+        elif self.config is not None:
             await self.call("SetConfigJson", json.dumps(self.config))
         await self.call("SetVolume", self.volume_db)
         await self.call("SetMute", self.mute)
@@ -282,10 +285,17 @@ class CamillaClient:
             if rate and self.on_rate_change:
                 self.on_rate_change(rate)
 
-    async def set_config(self, cfg):
-        self.config = cfg
+    async def set_config(self, cfg, idle=False):
+        """idle: no player has the loopback open. A running CamillaDSP would hold the
+        capture end at the old rate and format, and the loopback then forces every
+        player to exactly that (PulseAudio, which converts nothing, cannot open it:
+        "Resume failed"); so it stays stopped until LoopbackWatch sees a player."""
+        self.config, self.idle = cfg, idle
         if self._ws is not None:
-            await self.call("SetConfigJson", json.dumps(cfg))
+            if idle:
+                await self.call("Stop")
+            else:
+                await self.call("SetConfigJson", json.dumps(cfg))
 
     async def set_volume(self, db):
         self.mute = db is None
@@ -353,6 +363,21 @@ def loopback_params(text):
     return rate, CAMILLA_FORMATS.get(m[1] if m else "", "S32_LE")
 
 
+LOOPBACK_PLAYBACK = [Path(f"/proc/asound/Loopback/pcm0p/sub{i}/hw_params") for i in range(2)]
+
+
+def loopback_open():
+    """(rate, format) of the player that has the loopback open, None when none has."""
+    for p in LOOPBACK_PLAYBACK:
+        try:
+            params = loopback_params(p.read_text())
+        except OSError:
+            continue
+        if params:
+            return params
+    return None
+
+
 class LoopbackWatch:
     """Every player writes into the loopback (Loopback,0); CamillaDSP reads the
     other end and lets go of it when nothing plays (stop_on_inactive). Whoever
@@ -360,7 +385,7 @@ class LoopbackWatch:
     restarts CamillaDSP at that rate: bit-perfect for every source, without
     trusting each player to announce its rate before it opens the device."""
 
-    PATHS = [Path(f"/proc/asound/Loopback/pcm0p/sub{i}/hw_params") for i in range(2)]
+    PATHS = LOOPBACK_PLAYBACK
 
     SPOTIFY_STUCK = 5.0         # s: Spotify "plays" but nothing reaches the loopback
     NUDGE_PAUSE = 30.0          # s between two nudges
@@ -376,14 +401,7 @@ class LoopbackWatch:
         asyncio.ensure_future(self._run())
 
     def read(self):
-        for p in self.PATHS:
-            try:
-                params = loopback_params(p.read_text())
-            except OSError:
-                continue
-            if params:
-                return params
-        return None
+        return loopback_open()
 
     def running(self):
         """True while a player actually writes (not just holds the device open, paused)."""
@@ -543,7 +561,7 @@ class RealWorld:
 
     # ── CamillaDSP ──
     def camilla_apply(self, cfg):
-        self._spawn(self.camilla.set_config(cfg))
+        self._spawn(self.camilla.set_config(cfg, idle=loopback_open() is None))
 
     def fir_taps(self, fir_dir, preset, rate):
         files = (preset.get("fir") or {}).get(str(rate)) or {}
