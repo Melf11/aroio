@@ -97,6 +97,31 @@ test('Album abspielen, Lautstärke, Warteschlange', async ({ page, request }) =>
   await expect(page.getByText('AirPlay', { exact: false }).first()).toBeVisible();
 });
 
+test('Lautstärke im Miniplayer', async ({ page, request }, info) => {
+  await fresh(request);
+  await page.goto('/musik/b?path=local/album/2');
+  await page.getByRole('button', { name: 'Abspielen', exact: true }).click();
+  const mini = page.getByRole('region', { name: 'Wiedergabe' });
+  await expect(mini).toBeVisible();
+  if (info.project.name === 'mobil') {
+    const btn = mini.getByRole('button', { name: /^Lautstärke: \d+ Prozent$/ });
+    await btn.click();
+    await expect(btn).toHaveAttribute('aria-expanded', 'true');
+    await axe(page, 'mini-volume');
+    await page.getByRole('button', { name: 'Lauter' }).click();
+    await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).player.volume).toBe(35);
+    await page.keyboard.press('Escape');
+    await expect(btn).toHaveAttribute('aria-expanded', 'false');
+    await expect(btn).toBeFocused();
+  } else {
+    const slider = mini.getByRole('slider', { name: 'Lautstärke' });
+    await slider.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).player.volume).toBe(31);
+    await axe(page, 'mini-volume');
+  }
+});
+
 test('Raumkorrektur Schritt für Schritt', async ({ page, request }) => {
   test.setTimeout(180000);
   await fresh(request);

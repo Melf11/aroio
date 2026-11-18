@@ -280,6 +280,7 @@ export default {
   'Name des Aroio': 'Name of the Aroio',
   'Name für diese Einstellung': 'Name for this setting',
   'Name nicht erkannt': 'Name not recognised',
+  'Lautstärke: {v} Prozent': 'Volume: {v} percent',
   'Zertifikat gespeichert.': 'Certificate saved.',
   'Zertifikat entfernt.': 'Certificate removed.',
   'Firmenzertifikat': 'Company certificate',
