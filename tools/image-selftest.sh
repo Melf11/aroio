@@ -25,6 +25,7 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          usr/bin/pulseaudio usr/lib/systemd/system/aroio-pulse.service usr/lib/systemd/system/aroio-soloist.service \
          etc/systemd/system/multi-user.target.wants/aroio-soloist.service etc/aroio/pulse.pa usr/lib/libatomic.so.1 \
          usr/lib/aroiod/aroiod/soloist.py usr/lib/systemd/system/aroio-soloist-update.timer \
+         usr/lib/aroio/soloist-run usr/lib/aroio/soloist-log.awk \
          etc/systemd/system/multi-user.target.wants/squeezelite.service etc/systemd/system/multi-user.target.wants/upmpdcli.service \
          etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/lib/aroio/infoscreen \
          etc/systemd/system/data.mount.wants/aroio-grow-data.service usr/sbin/sfdisk usr/bin/partx usr/lib/systemd/systemd-growfs \
@@ -61,6 +62,9 @@ grep -q "^pulse:" "$R/etc/passwd" || { echo "Benutzer pulse fehlt (aroio-pulse s
 # only Avahi speaks mDNS: a second stack in systemd-resolved makes aroio.local unreliable
 grep -q "^MulticastDNS=no" "$R/etc/systemd/resolved.conf.d/aroio.conf" 2>/dev/null || { echo "systemd-resolved macht noch mDNS"; fail=1; }
 [ "$(readlink "$R/etc/resolv.conf")" = "../run/systemd/resolve/stub-resolv.conf" ] || { echo "/etc/resolv.conf umgeht systemd-resolved (DNS bei LAN+WLAN kaputt)"; fail=1; }
+# Spotify: verbose log through the filter (codec for the app); busybox awk must run it
+[ -x "$R/usr/lib/aroio/soloist-run" ] && grep -q "^ExecStart=/usr/lib/aroio/soloist-run" "$R/usr/lib/systemd/system/aroio-soloist.service" || { echo "Soloist ohne soloist-run"; fail=1; }
+printf '1 I [f:1 ] x\n' | chroot "$R" /usr/bin/awk -f /usr/lib/aroio/soloist-log.awk >/dev/null || { echo "soloist-log.awk laeuft nicht mit dem awk im Image"; fail=1; }
 for u in aroio-soloist aroio-soloist-update mpd upmpdcli; do grep -q "^EnvironmentFile=-/data/aroio/proxy.env" "$R/usr/lib/systemd/system/$u.service.d/proxy.conf" 2>/dev/null || { echo "$u: Proxy-Einstellung fehlt"; fail=1; }; done
 # same DHCP identity after every restart (machine-id is new on every boot): same IP address
 grep -q "^ClientIdentifier=mac" "$R/etc/systemd/network/20-wired.network" || { echo "DHCP-Kennung wechselt bei jedem Start (neue IP)"; fail=1; }

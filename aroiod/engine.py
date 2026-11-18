@@ -409,7 +409,7 @@ class Device:
     def signal_info(self):
         fmt = (self.meta or {}).get("format") or {}
         bit_perfect = bool(self.dsp_status.get("pipeline_empty")) and not self.muted and (
-            self.fixed_level or self.volume >= 100 or self.world.hw_volume) and fmt.get("codec") not in ("MP3", "AAC", "OGG")
+            self.fixed_level or self.volume >= 100 or self.world.hw_volume) and fmt.get("codec") not in ("MP3", "AAC", "OGG", "Ogg Vorbis")
         return dict(self.dsp_status, codec=fmt.get("codec"), bits=fmt.get("bits"), bit_perfect=bit_perfect,
                     source_rate=fmt.get("rate"), cleaner=self.config.get("dsp.ms_cleaner"),
                     mono=self.config.get("dsp.mono"))

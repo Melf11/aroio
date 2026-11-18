@@ -1,0 +1,9 @@
+#!/bin/bash
+# Spotify Soloist with its verbose log (-v): only that names the codec of the stream
+# (Ogg Vorbis or Lossless FLAC). soloist-log.awk keeps the format for aroiod in
+# /run/aroio/soloist-format and lets only warnings, errors and the usual status lines
+# through to the journal (it lives in RAM; -v alone writes ~200 lines a minute).
+# The exit code is Soloist's (10 = build expired, see the unit).
+set -o pipefail
+mkdir -p /run/aroio
+/data/spotify/bin/soloist "$@" -v 2>&1 | /usr/bin/awk -f /usr/lib/aroio/soloist-log.awk

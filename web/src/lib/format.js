@@ -23,6 +23,7 @@ export function quality(fmt) {
   const { codec, bits, rate: r } = fmt;
   if (codec === 'DSD') return `DSD${Math.round(r / 44100)}`;
   if (!codec) return rate(r);
+  if (fmt.kbps) return `${codec} · ${fmt.kbps} kbit/s · ${rate(r)}`;
   if (!bits) return `${codec} · ${rate(r)}`;
   return `${codec} · ${bits} Bit · ${rate(r)}`;
 }

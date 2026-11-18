@@ -45,6 +45,9 @@ WS = os.environ.get("AROIO_SOLOIST_WS", "ws://127.0.0.1:9090")
 DOWNLOAD = "https://soloist-builds.spotifycdn.com/soloist_release_{arch}.tar.gz"
 BUILD_LIFETIME_DAYS = 90
 RATE = 44100
+# written by /usr/lib/aroio/soloist-run from Soloist's verbose log when a track opens
+FORMAT_FILE = Path(os.environ.get("AROIO_SOLOIST_FORMAT", "/run/aroio/soloist-format"))
+CODECS = {"flac": "FLAC", "vorbis": "Ogg Vorbis", "aac": "AAC", "mp3": "MP3"}
 
 
 def clean_key(value):
@@ -204,6 +207,24 @@ def _cover(item):
     return (best or {}).get("url")
 
 
+def stream_format():
+    """What Soloist streams: {"codec", "bits", "rate"[, "kbps"]}. Lossless FLAC names no
+    bit depth (decoded to float); lossy streams carry their bitrate."""
+    fmt = {"codec": None, "bits": None, "rate": RATE}
+    try:
+        data = json.loads(FORMAT_FILE.read_text())
+    except (OSError, ValueError):
+        return fmt
+    codec = str(data.get("codec") or "").lower()
+    if codec:
+        fmt["codec"] = CODECS.get(codec, codec.upper())
+        if codec != "flac" and data.get("bitrate"):
+            fmt["kbps"] = round(int(data["bitrate"]) / 1000)
+    if data.get("rate"):
+        fmt["rate"] = int(data["rate"])
+    return fmt
+
+
 def track_meta(item, position=None):
     """Soloist item (+ position) -> meta in the shape of the app (see sim._external_meta)."""
     item = item or {}
@@ -212,9 +233,7 @@ def track_meta(item, position=None):
     meta = {"id": item.get("uri") or "spotify", "title": identity.get("name") or "Spotify",
             "artist": _names(item.get("creators")), "album": _names([item.get("parent")]) if item.get("parent") else "",
             "duration": round(duration, 1), "image": _cover(item), "provider": "spotify", "live": not duration,
-            # Soloist does not say what it streams (Ogg Vorbis or FLAC up to 24 bit with
-            # Lossless); it decodes to float, PulseAudio passes it on at 44.1 kHz
-            "format": {"codec": None, "bits": None, "rate": RATE}}
+            "format": stream_format()}
     if position:
         ms = position.get("position_ms") or 0
         if position.get("speed") and position.get("timestamp_ms"):
@@ -327,6 +346,9 @@ class SoloistClient:
         before, self.status = self.status, status
         d = self.device
         if status in ("playing", "buffering"):
+            if before not in ("playing", "buffering"):
+                # the codec line comes when Soloist opens its sink, just after "playing"
+                asyncio.get_event_loop().call_later(2.0, self._meta)
             if d.source != "spotify":
                 d.source_started("spotify", track_meta(self.item, self.position), rate=RATE)
             elif before not in ("playing", "buffering"):

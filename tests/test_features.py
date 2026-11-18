@@ -1,6 +1,7 @@
 """Functions taken over from AroioOS 5.1 and the rest of the gap list."""
 
 import asyncio
+import json
 import types
 import zipfile
 from io import BytesIO
@@ -646,3 +647,39 @@ async def test_tls_inspection_needs_company_certificate(monkeypatch, tmp_path):
         assert "SSL_CERT_FILE" not in os.environ and not bundle.exists() and not (tmp_path / "proxy.env").exists()
     finally:
         await runner.cleanup()
+
+
+def test_spotify_stream_format(monkeypatch, tmp_path):
+    """Soloist's verbose log names the codec (soloist-run writes it): Lossless = FLAC."""
+    from aroiod import soloist
+    f = tmp_path / "soloist-format"
+    monkeypatch.setattr(soloist, "FORMAT_FILE", f)
+    assert soloist.stream_format() == {"codec": None, "bits": None, "rate": 44100}   # not known (yet)
+    f.write_text('{"codec": "flac", "bitrate": 700000, "rate": 44100}')
+    assert soloist.stream_format() == {"codec": "FLAC", "bits": None, "rate": 44100}
+    f.write_text('{"codec": "vorbis", "bitrate": 320000, "rate": 44100}')
+    assert soloist.stream_format() == {"codec": "Ogg Vorbis", "bits": None, "rate": 44100, "kbps": 320}
+
+
+def test_soloist_log_filter(tmp_path):
+    """soloist-log.awk: format to the file, only warnings and status lines to the journal."""
+    import shutil
+    import subprocess
+    awk = shutil.which("awk")
+    if not awk:
+        pytest.skip("no awk")
+    src = (Path(__file__).parent.parent / "br2-external/board/rpi/overlay/usr/lib/aroio/soloist-log.awk").read_text()
+    script = tmp_path / "f.awk"
+    script.write_text(src.replace("/run/aroio/soloist-format", str(tmp_path / "fmt")))
+    log = ("10:17:04.464 I [f:346   ] Opening sink for playback.\x1b[0m\n"
+           "10:17:04.464 I [f:347   ]     codec: flac\x1b[0m\n"
+           "10:17:04.464 I [f:348   ]     bitrate: 700000 bits/s\x1b[0m\n"
+           "10:17:04.464 I [f:349   ]     sample rate: 44100 Hz\x1b[0m\n"
+           "10:17:04.497 E [f:74    ] \x1b[1;31mPipewire initialization failed!!\x1b[0m\n"
+           "10:17:04.498 W [f:1     ] \x1b[1;33mSomething odd\x1b[0m\n"
+           "10:17:04.499 I [f:246   ] became active device\x1b[0m\n"
+           "10:17:04.500 I [f:253   ] ConcurrentCollector ran append cycle\x1b[0m\n"
+           "2026-11-18 10:16:28.434: shutting down\n")
+    out = subprocess.run([awk, "-f", str(script)], input=log, capture_output=True, text=True, check=True).stdout
+    assert out.splitlines() == ["W: Something odd", "became active device", "2026-11-18 10:16:28.434: shutting down"]
+    assert json.loads((tmp_path / "fmt").read_text()) == {"codec": "flac", "bitrate": 700000, "rate": 44100}

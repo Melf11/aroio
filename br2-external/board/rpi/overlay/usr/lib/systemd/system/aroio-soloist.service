@@ -19,7 +19,8 @@ EnvironmentFile=/data/aroio/soloist.env
 Environment=PULSE_SERVER=unix:/run/pulse/native
 CacheDirectory=soloist
 # -i 100: Spotify at full level, the Aroio's volume is the master
-ExecStart=/data/spotify/bin/soloist -n "${AROIO_NAME}" -k "${SOLOIST_KEY}" -D /data/spotify/soloist \
+# soloist-run: verbose log filtered (codec for the app, little in the journal)
+ExecStart=/usr/lib/aroio/soloist-run -n "${AROIO_NAME}" -k "${SOLOIST_KEY}" -D /data/spotify/soloist \
     -C /var/cache/soloist -z 100 -i 100 -w 127.0.0.1:9090
 Nice=-10
 Restart=always
