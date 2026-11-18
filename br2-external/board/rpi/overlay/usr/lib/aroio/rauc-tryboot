@@ -25,10 +25,16 @@ dev_of() { if [ "$1" = A ]; then echo /dev/mmcblk0p2; else echo /dev/mmcblk0p3; 
 other() { if [ "$1" = A ]; then echo B; else echo A; fi; }
 booted() { s=$(sed -n 's/.*rauc\.slot=\([AB]\).*/\1/p' "$CMDLINE"); echo "${s:-A}"; }
 has_tryboot() { grep -qaE "Raspberry Pi (4|5|400|500)|Compute Module (4|5)" "$MODEL" 2>/dev/null; }
+# without "sync": with it every block of the ~400 boot files (26 MB) went to the card on
+# its own and an install stood at 99 % for minutes; the explicit syncs below are enough
 mount_boot() {
     [ -n "${AROIO_BOOT:-}" ] && return 0
     mkdir -p "$BOOT"
-    mountpoint -q "$BOOT" || mount -t vfat -o rw,sync /dev/mmcblk0p1 "$BOOT"
+    if mountpoint -q "$BOOT"; then
+        mount -o remount,rw,async "$BOOT"
+    else
+        mount -t vfat -o rw,async /dev/mmcblk0p1 "$BOOT"
+    fi
 }
 primary() {
     mount_boot

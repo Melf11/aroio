@@ -1,6 +1,7 @@
 #!/bin/sh
 # Restart; right after an update the new slot is tried once (Pi 4/5 tryboot).
 if [ -f /run/aroio/tryboot ]; then
-    exec systemctl reboot "0 tryboot"
+    # systemd >= 257 takes no argument after "reboot" any more ("Too many arguments")
+    exec systemctl reboot --reboot-argument="0 tryboot"
 fi
 exec systemctl reboot

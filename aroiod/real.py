@@ -1141,8 +1141,10 @@ class RealWorld:
 
     async def reboot(self, device):
         await asyncio.sleep(1.0)                 # let the app receive "rebooting" first
-        # after an update the new slot is tried once (Pi 4/5 tryboot), see /usr/lib/aroio/rauc-tryboot
-        await _run("/usr/lib/aroio/reboot")
+        # after an update the new slot is tried once (Pi 4/5 tryboot), see /usr/lib/aroio/rauc-tryboot.
+        # Done here and not by /usr/lib/aroio/reboot: up to 0.2.0-beta.7 that script used
+        # `systemctl reboot "0 tryboot"`, which systemd 262 refuses, so an update never started.
+        await _run(*reboot_command())
 
     # ── measurement microphone ──
     def mic_status(self):
@@ -1211,6 +1213,14 @@ class RealWorld:
 
 
 WLAN = "wlan0"
+TRYBOOT_FLAG = Path("/run/aroio/tryboot")       # written by rauc-tryboot set-primary (Pi 4/5)
+
+
+def reboot_command():
+    if TRYBOOT_FLAG.exists():
+        return ("systemctl", "reboot", "--reboot-argument=0 tryboot")
+    return ("systemctl", "reboot")
+
 # RAUC mounts the bundle under /mnt/rauc by default, but / is read-only: /run is tmpfs.
 # A command line option (not system.conf), so it also works on systems already installed.
 RAUC_INSTALL = ("rauc", "--mount=/run/rauc", "install")

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 from aiohttp import WSMsgType, web
@@ -377,3 +378,15 @@ async def test_camilla_stays_stopped_while_no_player_has_the_loopback(monkeypatc
     monkeypatch.setattr(real, "loopback_open", lambda: (44100, "F32_LE"))
     w.camilla_apply({"y": 2})
     assert seen == [True, False]
+
+
+def test_reboot_tries_the_new_slot(monkeypatch, tmp_path):
+    """systemd 262 refuses `systemctl reboot "0 tryboot"`; the argument is an option now."""
+    from aroiod import real
+    flag = tmp_path / "tryboot"
+    monkeypatch.setattr(real, "TRYBOOT_FLAG", flag)
+    assert real.reboot_command() == ("systemctl", "reboot")
+    flag.touch()
+    assert real.reboot_command() == ("systemctl", "reboot", "--reboot-argument=0 tryboot")
+    script = (Path(__file__).parent.parent / "br2-external/board/rpi/overlay/usr/lib/aroio/reboot").read_text()
+    assert '--reboot-argument="0 tryboot"' in script and 'reboot "0 tryboot"' not in script
