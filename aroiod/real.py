@@ -362,10 +362,15 @@ class LoopbackWatch:
 
     PATHS = [Path(f"/proc/asound/Loopback/pcm0p/sub{i}/hw_params") for i in range(2)]
 
+    SPOTIFY_STUCK = 5.0         # s: Spotify "plays" but nothing reaches the loopback
+    NUDGE_PAUSE = 30.0          # s between two nudges
+
     def __init__(self, device, interval=0.1):
         self.device = device
         self.interval = interval
         self.rate = None
+        self._silent_since = None
+        self._nudged = -1e9
 
     def start(self):
         asyncio.ensure_future(self._run())
@@ -398,11 +403,39 @@ class LoopbackWatch:
                 log.info("loopback opened at %s Hz, %s", *params)
                 self.device.loopback_opened(*params)
 
+    def spotify_check(self, now=None):
+        """PulseAudio can fail to wake its sink when Spotify starts (e.g. Soloist restarted at
+        that moment: "Resume failed, couldn't restore original sample settings"); Soloist
+        then plays into nothing until paused and resumed. Do that for the listener.
+        Returns True when it nudged."""
+        now = time.monotonic() if now is None else now
+        client = getattr(self.device.world, "soloist", None)
+        silent = (self.device.source == "spotify" and client is not None
+                  and client.status == "playing" and self.rate is None)
+        if not silent:
+            self._silent_since = None
+            return False
+        if self._silent_since is None:
+            self._silent_since = now
+        if now - self._silent_since < self.SPOTIFY_STUCK or now - self._nudged < self.NUDGE_PAUSE:
+            return False
+        self._nudged, self._silent_since = now, None
+        log.warning("Spotify plays but nothing reaches the loopback: pause and resume")
+        asyncio.ensure_future(self._nudge(client))
+        return True
+
+    @staticmethod
+    async def _nudge(client):
+        await client.command("pause")
+        await asyncio.sleep(1.0)
+        await client.command("play")
+
     async def _run(self):
         stuck = 0
         while True:
             try:
                 self.check(self.read())
+                self.spotify_check()
                 # a player has the loopback open but CamillaDSP stopped (e.g. after an error):
                 # start it again instead of staying silent
                 cam = getattr(self.device.world, "camilla", None)

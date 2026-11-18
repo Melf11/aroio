@@ -103,8 +103,17 @@ def _open(req, timeout):
     return urllib.request.build_opener(https).open(req, timeout=timeout)
 
 
-def _idle():
-    """Nothing plays on Soloist (or it is not running): safe to restart it."""
+def _idle(settle=10.0):
+    """Nothing plays on Soloist (or it is not running): safe to restart it. Asked twice,
+    `settle` seconds apart: right after someone picks the Aroio in the Spotify app it is
+    the active device but not yet "playing" (a restart then left it playing into nothing)."""
+    if not _idle_now():
+        return False
+    time.sleep(settle)
+    return _idle_now()
+
+
+def _idle_now():
     async def ask():
         import aiohttp
         try:
@@ -114,7 +123,9 @@ def _idle():
                     async for msg in ws:
                         data = json.loads(msg.data)
                         if data.get("type") == "playback_state":
-                            return data.get("status") not in ("playing", "buffering")
+                            status = data.get("status")
+                            starting = data.get("is_active") and status not in ("paused",)
+                            return status not in ("playing", "buffering") and not starting
         except Exception:  # noqa: BLE001 — not running counts as idle
             return True
         return True

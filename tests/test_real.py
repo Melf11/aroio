@@ -298,3 +298,41 @@ async def test_soloist_download_follows_a_proxy_set_later(aiohttp_server, monkey
     monkeypatch.setenv("http_proxy", f"http://max:pw@127.0.0.1:{proxy_srv.port}")
     body = await asyncio.get_event_loop().run_in_executor(None, lambda: soloist._open(req(), 5).read())
     assert body == b"via proxy" and seen and seen[0][1].startswith("Basic ")
+
+
+async def test_spotify_playing_into_nothing_is_nudged():
+    """Soloist says "playing" but PulseAudio never opened the loopback: pause and resume
+    once (what fixed it by hand), not again within 30 s, not while another source plays."""
+    import types
+    from aroiod import real
+    sent = []
+
+    class Client:
+        status = "playing"
+
+        async def command(self, cmd):
+            sent.append(cmd)
+    device = types.SimpleNamespace(source="spotify", world=types.SimpleNamespace(soloist=Client()))
+    w = real.LoopbackWatch(device)
+    assert not w.spotify_check(now=100.0)
+    assert not w.spotify_check(now=104.0)
+    assert w.spotify_check(now=105.5)
+    await asyncio.sleep(1.2)
+    assert sent == ["pause", "play"]
+    assert not w.spotify_check(now=112.0) and not w.spotify_check(now=120.0)   # 30 s pause
+    w.rate = (44100, "F32_LE")                       # sound arrives: all fine
+    assert not w.spotify_check(now=200.0) and not w.spotify_check(now=300.0)
+    w.rate = None
+    device.source = "airplay"
+    assert not w.spotify_check(now=400.0) and not w.spotify_check(now=410.0)
+
+
+def test_soloist_not_restarted_while_just_chosen(monkeypatch):
+    """Right after someone picks the Aroio in Spotify it is active but not yet playing."""
+    from aroiod import soloist
+    answers = iter([True, False])
+    monkeypatch.setattr(soloist, "_idle_now", lambda: next(answers))
+    assert soloist._idle(settle=0) is False
+    answers = iter([True, True])
+    monkeypatch.setattr(soloist, "_idle_now", lambda: next(answers))
+    assert soloist._idle(settle=0) is True
