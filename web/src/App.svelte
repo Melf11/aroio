@@ -18,6 +18,7 @@
   import RoomWizard from './views/RoomWizard.svelte';
   import PresetDetail from './views/PresetDetail.svelte';
   import FirImport from './views/FirImport.svelte';
+  import Headphones from './views/Headphones.svelte';
   import Settings from './views/Settings.svelte';
   import SettingsGeneral from './views/settings/General.svelte';
   import SettingsNetwork from './views/settings/Network.svelte';
@@ -39,7 +40,7 @@
   const routes = [
     ['/', Player], ['/warteschlange', Queue],
     ['/musik', MusicHome], ['/musik/b', Browse], ['/musik/suche', Search],
-    ['/klang', Sound], ['/klang/raumkorrektur', RoomWizard], ['/klang/preset/:id', PresetDetail], ['/klang/import', FirImport],
+    ['/klang', Sound], ['/klang/raumkorrektur', RoomWizard], ['/klang/preset/:id', PresetDetail], ['/klang/import', FirImport], ['/klang/kopfhoerer', Headphones],
     ['/einstellungen', Settings], ['/einstellungen/allgemein', SettingsGeneral], ['/einstellungen/netzwerk', SettingsNetwork],
     ['/einstellungen/dienste', SettingsServices], ['/einstellungen/dienste/:id', SettingsService],
     ['/einstellungen/bluetooth', SettingsBluetooth], ['/einstellungen/updates', SettingsUpdates],

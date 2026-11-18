@@ -1,5 +1,5 @@
 <script>
-  import { AudioWaveform, ChevronRight, Mic, Upload, BadgeCheck, Ear, SlidersHorizontal } from '@lucide/svelte';
+  import { AudioWaveform, ChevronRight, Mic, Upload, BadgeCheck, Ear, SlidersHorizontal, Headphones } from '@lucide/svelte';
   import PageHeader from '../components/PageHeader.svelte';
   import Toggle from '../components/Toggle.svelte';
   import Segmented from '../components/Segmented.svelte';
@@ -14,7 +14,7 @@
   const rc = $derived(app.topics.roomcorr);
   const hasRoom = $derived(dsp?.presets.some((p) => p.origin === 'roomcorr'));
   const kinds = { bypass: t('unverändert'), peq: t('Equalizer'), fir: t('FIR-Filter') };
-  const origins = { roomcorr: t('Raumkorrektur'), import: t('Importiert'), migration: t('Vom alten Aroio'), builtin: '', user: t('Eigene') };
+  const origins = { roomcorr: t('Raumkorrektur'), import: t('Importiert'), headphone: t('Kopfhörer'), migration: t('Vom alten Aroio'), builtin: '', user: t('Eigene') };
 
   const save = async (patch) => { try { await config(patch); } catch (e) { toast(e.message, 'danger'); } };
   const activate = async (id) => {
@@ -54,6 +54,16 @@
         </div>
       </div>
       <button class="btn" type="button" disabled={creating} onclick={newEq}>{t('Equalizer anlegen')}</button>
+    </section>
+
+    <section class="card room">
+      <div class="row"><span class="ic"><Headphones size={22} aria-hidden="true" /></span>
+        <div class="grow">
+          <h2>{t('Kopfhörer-Korrektur')}</h2>
+          <p class="muted small">{t('Fertige Korrekturfilter für viele Kopfhörer: gleicht den Klang deines Kopfhörers an eine neutrale Zielkurve an.')}</p>
+        </div>
+      </div>
+      <a class="btn" href="/klang/kopfhoerer">{t('Kopfhörer wählen')}</a>
     </section>
 
     <fieldset class="presets" disabled={!dsp.enabled}>
@@ -101,7 +111,7 @@
     {#if d?.expert_mode}
       <h2 class="section-title">{t('Expertenmodus')}</h2>
       <ul class="list">
-        <li><a class="link-row" href="/klang/import"><Upload size={20} aria-hidden="true" /><span class="grow">{t('FIR-Filter importieren und Kopfhörer-Korrektur')}</span><ChevronRight size={20} aria-hidden="true" /></a></li>
+        <li><a class="link-row" href="/klang/import"><Upload size={20} aria-hidden="true" /><span class="grow">{t('FIR-Filter importieren')}</span><ChevronRight size={20} aria-hidden="true" /></a></li>
       </ul>
       {#if dsp.status}
         <dl class="status card">

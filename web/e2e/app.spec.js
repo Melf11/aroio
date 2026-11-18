@@ -20,7 +20,7 @@ const ROUTES = ['/', '/musik', '/musik/b?path=local/albums', '/musik/b?path=loca
   '/klang', '/einstellungen', '/einstellungen/allgemein', '/einstellungen/netzwerk', '/einstellungen/dienste',
   '/einstellungen/dienste/spotify', '/einstellungen/dienste/tidal', '/einstellungen/dienste/qobuz', '/einstellungen/dienste/lyrion',
   '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet', '/einstellungen/lautsprecher', '/einstellungen/lizenzen',
-  '/klang/preset/werk-bbcdip'];
+  '/klang/preset/werk-bbcdip', '/klang/kopfhoerer'];
 const EXPERT = ['/einstellungen/ton', '/einstellungen/hardware', '/einstellungen/system', '/klang/import'];
 
 test('alle Seiten ohne Barrierefreiheits-Verstöße (hell und dunkel)', async ({ page, request }, info) => {
@@ -390,12 +390,11 @@ test('NetJack einschalten, Rate wählen, Rechner spielt', async ({ page, request
   await axe(page, 'NetJack gestoppt');
 });
 
-test('Kopfhörer-Korrektur im Expertenmodus', async ({ page, request }) => {
+test('Kopfhörer-Korrektur unter Klang (ohne Expertenmodus)', async ({ page, request }) => {
   await fresh(request);
-  await api(request, '/config', { device: { expert_mode: true } }, 'patch');
   await page.goto('/klang');
-  await page.getByRole('link', { name: 'FIR-Filter importieren und Kopfhörer-Korrektur' }).click();
-  await expect(page.getByRole('heading', { name: 'Kopfhörer-Korrektur' })).toBeVisible();
+  await page.getByRole('link', { name: 'Kopfhörer wählen' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Kopfhörer-Korrektur' })).toBeVisible();
   await page.getByRole('radio', { name: 'Harman (älter)' }).check();
   await page.getByLabel('Kopfhörer suchen').fill('k701');
   await expect(page.getByText('1 Kopfhörer')).toBeVisible();
@@ -421,7 +420,7 @@ test('Stereo-WAV aus dem Kopfhörer-Projekt hochladen', async ({ page, request }
   await fresh(request);
   await api(request, '/config', { device: { expert_mode: true } }, 'patch');
   await page.goto('/klang');
-  await page.getByRole('link', { name: 'FIR-Filter importieren und Kopfhörer-Korrektur' }).click();
+  await page.getByRole('link', { name: 'FIR-Filter importieren' }).click();
   await page.getByLabel(/Dateien wählen/).setInputFiles({ name: 'Sennheiser_HD_600-filters-48k.wav', mimeType: 'audio/wav', buffer: stereoWav() });
   await expect(page.getByText('Stereo · alle Abtastraten')).toBeVisible();
   await expect(page.getByLabel('Name', { exact: true })).toHaveValue('Sennheiser HD 600');
