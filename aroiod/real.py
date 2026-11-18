@@ -771,6 +771,15 @@ class RealWorld:
                 out[name] = r.stdout + r.stderr
             except (OSError, subprocess.SubprocessError) as exc:
                 out[name] = str(exc)
+        # Pi 4/5 EEPROM: BOOT_ORDER with USB or network before the SD card (e.g. 0xf14) waits
+        # up to ~30 s on every start before the SD card is even read
+        try:
+            out["system/bootloader.txt"] = "\n".join(gencmd(c) for c in ("bootloader_version", "bootloader_config"))
+        except OSError as exc:
+            out["system/bootloader.txt"] = str(exc)
+        out["system/boot-timeline.txt"] = subprocess.run(
+            ["journalctl", "-b", "-o", "short-monotonic", "--no-pager", "-n", "400", "_PID=1"],
+            capture_output=True, text=True, timeout=10).stdout
         return out
 
     # ── services ──
@@ -1261,6 +1270,26 @@ def _internet_error(exc, what="GitHub"):
     if os.environ.get("https_proxy"):
         return f"{what} ist über den Proxy nicht erreichbar."
     return f"{what} ist nicht erreichbar. Hat der Aroio Internet?"
+
+
+def gencmd(command):
+    """vcgencmd through the firmware mailbox (/dev/vcio); the image has no vcgencmd."""
+    import array
+    import fcntl
+    req = command.encode() + b"\0"
+    size = 4096
+    buf = array.array("I", [0, 0, 0x00030080, size, len(req), 0] + [0] * (size // 4) + [0])
+    buf[0] = len(buf) * 4
+    raw = bytearray(buf.tobytes())
+    raw[24:24 + len(req)] = req
+    buf = array.array("I")
+    buf.frombytes(bytes(raw))
+    fd = os.open("/dev/vcio", os.O_RDWR)
+    try:
+        fcntl.ioctl(fd, 0xC0086400, buf, True)          # IOCTL_MBOX_PROPERTY
+    finally:
+        os.close(fd)
+    return buf.tobytes()[24:].split(b"\0")[0].decode(errors="replace").strip()
 
 
 def wifi_enabled():
