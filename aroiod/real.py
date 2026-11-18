@@ -387,7 +387,10 @@ class LoopbackWatch:
 
     PATHS = LOOPBACK_PLAYBACK
 
-    SPOTIFY_STUCK = 5.0         # s: Spotify "plays" but nothing reaches the loopback
+    # s: Spotify "plays" but nothing reaches the loopback. Normally PulseAudio opens it within
+    # 0.1 s; right after the first login Soloist reports "playing" without opening its audio
+    # at all ("Session Track Player closed without close source"), the listener hears nothing.
+    SPOTIFY_STUCK = 2.5
     NUDGE_PAUSE = 30.0          # s between two nudges
 
     def __init__(self, device, interval=0.1):
@@ -422,9 +425,8 @@ class LoopbackWatch:
                 self.device.loopback_opened(*params)
 
     def spotify_check(self, now=None):
-        """PulseAudio can fail to wake its sink when Spotify starts (e.g. Soloist restarted at
-        that moment: "Resume failed, couldn't restore original sample settings"); Soloist
-        then plays into nothing until paused and resumed. Do that for the listener.
+        """Soloist sometimes plays into nothing until paused and resumed (right after the
+        first login it takes over but never opens its audio). Do that for the listener.
         Returns True when it nudged."""
         now = time.monotonic() if now is None else now
         client = getattr(self.device.world, "soloist", None)
@@ -445,7 +447,7 @@ class LoopbackWatch:
     @staticmethod
     async def _nudge(client):
         await client.command("pause")
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.5)
         await client.command("play")
 
     async def _run(self):

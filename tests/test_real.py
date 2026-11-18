@@ -316,9 +316,9 @@ async def test_spotify_playing_into_nothing_is_nudged():
     device = types.SimpleNamespace(source="spotify", world=types.SimpleNamespace(soloist=Client()))
     w = real.LoopbackWatch(device)
     assert not w.spotify_check(now=100.0)
-    assert not w.spotify_check(now=104.0)
-    assert w.spotify_check(now=105.5)
-    await asyncio.sleep(1.2)
+    assert not w.spotify_check(now=102.0)
+    assert w.spotify_check(now=102.6)
+    await asyncio.sleep(0.7)
     assert sent == ["pause", "play"]
     assert not w.spotify_check(now=112.0) and not w.spotify_check(now=120.0)   # 30 s pause
     w.rate = (44100, "F32_LE")                       # sound arrives: all fine
