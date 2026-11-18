@@ -280,6 +280,8 @@ export default {
   'Name des Aroio': 'Name of the Aroio',
   'Name für diese Einstellung': 'Name for this setting',
   'Name nicht erkannt': 'Name not recognised',
+  'Erneut suchen': 'Check again',
+  'Zuletzt gesucht: {when}': 'Last checked: {when}',
   'Kopfhörer': 'Headphones',
   'Kopfhörer wählen': 'Choose headphones',
   'Fertige Korrekturfilter für viele Kopfhörer: gleicht den Klang deines Kopfhörers an eine neutrale Zielkurve an.': 'Ready-made correction filters for many headphones: matches the sound of your headphones to a neutral target curve.',

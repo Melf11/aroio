@@ -1,14 +1,16 @@
 <script>
-  import { CircleCheck, Download, LoaderCircle } from '@lucide/svelte';
+  import { CircleCheck, Download, LoaderCircle, RefreshCw } from '@lucide/svelte';
   import PageHeader from '../../components/PageHeader.svelte';
   import Toggle from '../../components/Toggle.svelte';
   import Segmented from '../../components/Segmented.svelte';
   import { app, toast } from '../../lib/state.svelte.js';
   import { api, config } from '../../lib/api.js';
-  import { t } from '../../lib/i18n.svelte.js';
+  import { lang, t } from '../../lib/i18n.svelte.js';
   const u = $derived(app.topics.update);
   const expert = $derived(app.topics.device?.expert_mode);
   const run = (a) => api.post('/system/' + a).catch((e) => toast(e.message, 'danger'));
+  const when = (ts) => new Date(ts * 1000).toLocaleString(lang() === 'de' ? 'de-DE' : 'en-GB',
+    { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
   const save = async (patch) => { try { await config(patch); } catch (e) { toast(e.message, 'danger'); } };
 </script>
 
@@ -29,12 +31,16 @@
       {:else if u.available}
         <h2>{t('Version {v} ist verfügbar', { v: u.available })}</h2>
         <ul class="notes">{#each u.notes as n}<li>{n}</li>{/each}</ul>
-        <button class="btn primary" type="button" onclick={() => run('update-install')}><Download size={18} aria-hidden="true" />{t('Update installieren')}</button>
+        <div class="row wrap">
+          <button class="btn primary" type="button" onclick={() => run('update-install')}><Download size={18} aria-hidden="true" />{t('Update installieren')}</button>
+          <button class="btn" type="button" onclick={() => run('update-check')}><RefreshCw size={18} aria-hidden="true" />{t('Erneut suchen')}</button>
+        </div>
         <p class="muted small">{t('Sicher: Geht beim Update etwas schief, startet der Aroio automatisch mit der bisherigen Version.')}</p>
       {:else}
         <p class="notice ok"><CircleCheck size={18} aria-hidden="true" />{u.checked ? t('Der Aroio ist auf dem neuesten Stand.') : t('Noch nicht gesucht.')}</p>
-        <button class="btn" type="button" onclick={() => run('update-check')}>{t('Nach Updates suchen')}</button>
+        <button class="btn" type="button" onclick={() => run('update-check')}><RefreshCw size={18} aria-hidden="true" />{t('Nach Updates suchen')}</button>
       {/if}
+      {#if u.checked && u.state !== 'checking'}<p class="muted small">{t('Zuletzt gesucht: {when}', { when: when(u.checked) })}</p>{/if}
     </div>
     <ul class="list auto"><li><Toggle label={t('Automatisch aktualisieren')} description={t('Updates werden nachts installiert, wenn keine Musik läuft.')} checked={u.auto} onchange={(v) => save({ update: { auto: v } })} /></li></ul>
     {#if expert}
@@ -49,4 +55,5 @@
   .notes { margin: 0; padding-left: 20px; }
   .auto { margin-top: 16px; }
   .chan { margin-top: 20px; }
+  .wrap { flex-wrap: wrap; }
 </style>

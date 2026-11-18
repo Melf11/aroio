@@ -134,6 +134,18 @@ test('Mono-Schalter unter Klang', async ({ page, request }) => {
   await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).dsp.mono).toBe(false);
 });
 
+test('Updates: suchen, erneut suchen', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/einstellungen/updates');
+  // the update state survives the factory reset of earlier tests: first search or search again
+  await page.getByRole('button', { name: /^(Nach Updates suchen|Erneut suchen)$/ }).click();
+  await expect(page.getByRole('heading', { name: /Version .* ist verfügbar/ })).toBeVisible();
+  await expect(page.getByText(/^Zuletzt gesucht:/)).toBeVisible();
+  await axe(page, 'updates');
+  await page.getByRole('button', { name: 'Erneut suchen' }).click();
+  await expect(page.getByRole('button', { name: 'Update installieren' })).toBeVisible();
+});
+
 test('Raumkorrektur Schritt für Schritt', async ({ page, request }) => {
   test.setTimeout(180000);
   await fresh(request);

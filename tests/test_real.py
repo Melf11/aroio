@@ -336,3 +336,11 @@ def test_soloist_not_restarted_while_just_chosen(monkeypatch):
     answers = iter([True, True])
     monkeypatch.setattr(soloist, "_idle_now", lambda: next(answers))
     assert soloist._idle(settle=0) is True
+
+
+def test_rauc_mounts_bundles_under_run():
+    """/ is read-only: RAUC's default /mnt/rauc failed every install ("Read-only file system")."""
+    import inspect
+    from aroiod import real
+    assert real.RAUC_INSTALL == ("rauc", "--mount=/run/rauc", "install")
+    assert "RAUC_INSTALL" in inspect.getsource(real.RealWorld.install_update)

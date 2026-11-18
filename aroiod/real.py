@@ -1103,7 +1103,7 @@ class RealWorld:
                             if pct != last:
                                 last = pct
                                 yield pct
-            proc = await asyncio.create_subprocess_exec("rauc", "install", str(target),
+            proc = await asyncio.create_subprocess_exec(*RAUC_INSTALL, str(target),
                                                         stdout=asyncio.subprocess.PIPE,
                                                         stderr=asyncio.subprocess.STDOUT)
             tail = []
@@ -1193,6 +1193,9 @@ class RealWorld:
 
 
 WLAN = "wlan0"
+# RAUC mounts the bundle under /mnt/rauc by default, but / is read-only: /run is tmpfs.
+# A command line option (not system.conf), so it also works on systems already installed.
+RAUC_INSTALL = ("rauc", "--mount=/run/rauc", "install")
 HOTSPOT_IP = "192.168.4.1"
 WIFI_OFF_FLAG = Path("/data/aroio/wifi-off")
 PROXY_ENV = Path("/data/aroio/proxy.env")

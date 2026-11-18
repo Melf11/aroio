@@ -56,7 +56,7 @@ deploy() {
         bundle=$(ls -t output/aroio-*.raucb | head -1)
         echo "Installiere $bundle auf $HOST …"
         on_device 'mkdir -p /data/update && cat > /data/update/dev.raucb' < "$bundle"
-        on_device 'rauc install /data/update/dev.raucb; rc=$?; rm -f /data/update/dev.raucb; [ $rc = 0 ] && /usr/lib/aroio/reboot'
+        on_device 'rauc --mount=/run/rauc install /data/update/dev.raucb; rc=$?; rm -f /data/update/dev.raucb; [ $rc = 0 ] && /usr/lib/aroio/reboot'
         echo "$HOST startet mit dem neuen System. Startet es nicht sauber, geht es nach spätestens 5 Minuten zurück."
         return ;;
     --no-web) web=0 ;;
