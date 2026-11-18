@@ -114,6 +114,7 @@ SCHEMA = {
         "enabled": F(bool, True),
         "active_preset": F(str, "bypass", maxlen=64),
         "ms_cleaner": F(bool, False),
+        "mono": F(bool, False),             # both speakers play L+R (also with the correction off)
         "character": F(str, "neutral", choices=["neutral", "warm", "bright"]),
         # presets: list, validated by check_presets()
     },

@@ -212,7 +212,9 @@ def track_meta(item, position=None):
     meta = {"id": item.get("uri") or "spotify", "title": identity.get("name") or "Spotify",
             "artist": _names(item.get("creators")), "album": _names([item.get("parent")]) if item.get("parent") else "",
             "duration": round(duration, 1), "image": _cover(item), "provider": "spotify", "live": not duration,
-            "format": {"codec": "Vorbis/AAC", "bits": 16, "rate": RATE}}
+            # Soloist does not say what it streams (Ogg Vorbis or FLAC up to 24 bit with
+            # Lossless); it decodes to float, PulseAudio passes it on at 44.1 kHz
+            "format": {"codec": None, "bits": None, "rate": RATE}}
     if position:
         ms = position.get("position_ms") or 0
         if position.get("speed") and position.get("timestamp_ms"):

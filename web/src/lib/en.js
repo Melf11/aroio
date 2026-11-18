@@ -280,6 +280,8 @@ export default {
   'Name des Aroio': 'Name of the Aroio',
   'Name für diese Einstellung': 'Name for this setting',
   'Name nicht erkannt': 'Name not recognised',
+  'Mono': 'Mono',
+  'Beide Lautsprecher spielen dasselbe (links und rechts gemischt), z. B. wenn nur ein Lautsprecher steht oder du weit außerhalb der Mitte sitzt.': 'Both speakers play the same (left and right mixed), e.g. if there is only one speaker or you sit far off-centre.',
   'Lautstärke: {v} Prozent': 'Volume: {v} percent',
   'Zertifikat gespeichert.': 'Certificate saved.',
   'Zertifikat entfernt.': 'Certificate removed.',

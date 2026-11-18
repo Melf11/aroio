@@ -242,7 +242,7 @@ class Device:
             item["created"] = p.get("created")
             presets.append(item)
         self.hub.publish("dsp", {"enabled": d["enabled"], "active_preset": d["active_preset"],
-                                 "ms_cleaner": d["ms_cleaner"], "character": d["character"],
+                                 "ms_cleaner": d["ms_cleaner"], "mono": d["mono"], "character": d["character"],
                                  "compare_bypass": self.compare_bypass, "presets": presets,
                                  "status": self.dsp_status})
 
@@ -374,13 +374,13 @@ class Device:
             preset = dict(preset, gain_db=match)
         try:
             cfg = dsp.camilla_config(
-                preset, rate_out, ms_cleaner=c["dsp"]["ms_cleaner"] and c["dsp"]["enabled"],
+                preset, rate_out, ms_cleaner=c["dsp"]["ms_cleaner"] and c["dsp"]["enabled"], mono=c["dsp"]["mono"],
                 fir_dir=str(fir_dir), playback=self.world.dac_device,
                 capture_rate=rate_in if rate_in != rate_out else None, resampler=c["audio"]["resampler"],
                 chunksize=c["audio"]["chunksize"] or None, target_level=c["audio"]["target_level"] or None,
                 release_capture=self.world.rate_from_loopback, capture_format=self.capture_format)
         except dsp.MissingRate:
-            cfg = dsp.camilla_config(dsp_bypass(), rate_in, playback=self.world.dac_device)
+            cfg = dsp.camilla_config(dsp_bypass(), rate_in, playback=self.world.dac_device, mono=c["dsp"]["mono"])
             note = "error"
         self.world.camilla_apply(cfg)
         taps = 0
@@ -411,7 +411,8 @@ class Device:
         bit_perfect = bool(self.dsp_status.get("pipeline_empty")) and not self.muted and (
             self.fixed_level or self.volume >= 100 or self.world.hw_volume) and fmt.get("codec") not in ("MP3", "AAC", "OGG")
         return dict(self.dsp_status, codec=fmt.get("codec"), bits=fmt.get("bits"), bit_perfect=bit_perfect,
-                    source_rate=fmt.get("rate"), cleaner=self.config.get("dsp.ms_cleaner"))
+                    source_rate=fmt.get("rate"), cleaner=self.config.get("dsp.ms_cleaner"),
+                    mono=self.config.get("dsp.mono"))
 
     def loopback_opened(self, rate, fmt="S32_LE"):
         """A player opened the loopback at this rate and sample format (device):

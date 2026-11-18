@@ -23,11 +23,12 @@ import numpy as np
 CH = {"L": 0, "R": 1}
 MS_GAIN_DB = 20 * math.log10(0.5)  # -6.0206 dB
 
+MONO_GAIN_DB = -6.0206   # (L+R)/2
 BIQUAD_TYPES = {"peaking": "Peaking", "lowshelf": "Lowshelf", "highshelf": "Highshelf",
                 "lowpass": "Lowpass", "highpass": "Highpass"}
 
 
-def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
+def camilla_config(preset, rate, *, ms_cleaner=False, mono=False, fir_dir="/data/filters",
                    capture="hw:Loopback,1", playback="hw:0,0", chunksize=None,
                    target_level=None, resampler=None, capture_rate=None, release_capture=False,
                    capture_format="S32_LE"):
@@ -59,6 +60,14 @@ def camilla_config(preset, rate, *, ms_cleaner=False, fir_dir="/data/filters",
 
     filters, mixers, pipeline = {}, {}, []
     per_ch = {"L": [], "R": []}
+
+    if mono:
+        # first, so the corrections per speaker still apply; half of each, no clipping
+        both = [{"channel": 0, "gain": MONO_GAIN_DB, "inverted": False},
+                {"channel": 1, "gain": MONO_GAIN_DB, "inverted": False}]
+        mixers["mono"] = {"channels": {"in": 2, "out": 2}, "mapping": [
+            {"dest": 0, "sources": both}, {"dest": 1, "sources": both}]}
+        pipeline.append({"type": "Mixer", "name": "mono"})
 
     gain = float(preset.get("gain_db", 0.0))
     if gain:

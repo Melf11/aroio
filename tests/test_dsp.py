@@ -22,6 +22,17 @@ def test_cleaner_matrix_matches_old_brutefir():
     assert not dsp.is_bit_perfect(cfg)
 
 
+def test_mono_mixes_before_the_corrections():
+    peq = {"id": "p", "kind": "peq", "peq": {"L": [{"type": "peaking", "freq": 50, "gain": -6, "q": 3}], "R": []}}
+    cfg = dsp.camilla_config(peq, 48000, mono=True, ms_cleaner=True)
+    assert cfg["pipeline"][0] == {"type": "Mixer", "name": "mono"}
+    assert cfg["pipeline"][-1] == {"type": "Mixer", "name": "cleaner"}
+    m = cfg["mixers"]["mono"]["mapping"]
+    assert [[s["channel"] for s in row["sources"]] for row in m] == [[0, 1], [0, 1]]
+    assert all(abs(s["gain"] + 6.0206) < 1e-3 and not s["inverted"] for row in m for s in row["sources"])
+    assert not dsp.is_bit_perfect(dsp.camilla_config(builtin_bypass(), 48000, mono=True))
+
+
 def test_peq_fir_and_resampling():
     peq = {"id": "p", "kind": "peq", "gain_db": -3, "trim_db": {"L": -1, "R": 0}, "delay_ms": {"L": 0, "R": 0.5},
            "peq": {"L": [{"type": "peaking", "freq": 50, "gain": -6, "q": 3}], "R": []}}

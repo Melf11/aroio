@@ -132,7 +132,7 @@
         <ol>
           <li><strong>{t('Quelle')}</strong><span>{p.source_name}: {quality(p.track.format) || '–'}</span></li>
           <li><strong>{t('Aroio')}</strong><span>
-            {#if sig.processing}{t('Klang: {preset}', { preset: sig.preset })}{#if sig.cleaner}{', '}Cleaner{/if}{:else}{t('Unverändert durchgereicht')}{/if}
+            {#if sig.processing}{t('Klang: {preset}', { preset: sig.preset })}{#if sig.cleaner}{', '}Cleaner{/if}{#if sig.mono}{', '}{t('Mono')}{/if}{:else}{t('Unverändert durchgereicht')}{/if}
             {#if sig.resampled}{' · '}{t('Umrechnung {a} → {b}', { a: rate(sig.rate_in), b: rate(sig.rate_out) })}{/if}
             {#if sig.note === 'missing_rate'}{' · '}{t('Für diese Abtastrate gibt es keinen Filter.')}{/if}
           </span></li>

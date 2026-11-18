@@ -22,6 +22,7 @@ export function quality(fmt) {
   if (!fmt) return '';
   const { codec, bits, rate: r } = fmt;
   if (codec === 'DSD') return `DSD${Math.round(r / 44100)}`;
+  if (!codec) return rate(r);
   if (!bits) return `${codec} · ${rate(r)}`;
   return `${codec} · ${bits} Bit · ${rate(r)}`;
 }

@@ -94,6 +94,7 @@
     <h2 class="section-title">{t('Weitere Einstellungen')}</h2>
     <ul class="list">
       <li><Toggle label={t('Klangkorrektur')} description={t('Aus: Alle Klangeinstellungen werden umgangen.')} checked={dsp.enabled} onchange={(v) => save({ dsp: { enabled: v } })} /></li>
+      <li><Toggle label={t('Mono')} description={t('Beide Lautsprecher spielen dasselbe (links und rechts gemischt), z. B. wenn nur ein Lautsprecher steht oder du weit außerhalb der Mitte sitzt.')} checked={dsp.mono} onchange={(v) => save({ dsp: { mono: v } })} /></li>
       <li><Toggle label={t('Cleaner (M/S)')} description={t('Wandelt das Stereosignal in Mitte und Seite um (M/S-Codierung). Nur einschalten, wenn deine Lautsprecher oder dein Verstärker ein M/S-Signal erwarten.')} checked={dsp.ms_cleaner} onchange={(v) => save({ dsp: { ms_cleaner: v } })} /></li>
     </ul>
 

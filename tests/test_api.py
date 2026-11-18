@@ -591,3 +591,15 @@ async def test_import_stereo_wav(client, device):
     form.add_field("file", b"\0" * 64, filename="RaumL96.dbl")
     r = await client.post("/api/v1/dsp/import", data=form)
     assert r.status == 400 and "allein" in (await r.json())["error"]
+
+
+async def test_mono_switch(client, device):
+    """Klang › Weitere Einstellungen › Mono: both speakers L+R, also with the correction off."""
+    r = await client.patch("/api/v1/config", json={"dsp": {"mono": True}})
+    assert r.status == 200, await r.text()
+    assert (await state(client))["dsp"]["mono"] is True
+    assert device.world.camilla["pipeline"][0] == {"type": "Mixer", "name": "mono"}
+    await client.patch("/api/v1/config", json={"dsp": {"enabled": False}})
+    assert {"type": "Mixer", "name": "mono"} in device.world.camilla["pipeline"]
+    await client.patch("/api/v1/config", json={"dsp": {"mono": False}})
+    assert device.world.camilla["pipeline"] == []          # bit-perfect again

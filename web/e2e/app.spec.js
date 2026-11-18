@@ -122,6 +122,18 @@ test('Lautstärke im Miniplayer', async ({ page, request }, info) => {
   }
 });
 
+test('Mono-Schalter unter Klang', async ({ page, request }) => {
+  await fresh(request);
+  await page.goto('/klang');
+  const mono = page.getByRole('switch', { name: 'Mono' });
+  await mono.click();
+  await expect(mono).toBeChecked();
+  await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).dsp.mono).toBe(true);
+  await axe(page, 'mono');
+  await mono.click();
+  await expect.poll(async () => (await (await api(request, '/state', undefined, 'get')).json()).dsp.mono).toBe(false);
+});
+
 test('Raumkorrektur Schritt für Schritt', async ({ page, request }) => {
   test.setTimeout(180000);
   await fresh(request);
