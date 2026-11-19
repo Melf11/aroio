@@ -36,7 +36,7 @@ class TVMenu:
             menu_id, index = self.stack[-1]
             title, items = self._menu(menu_id)
             out.update(title=title, index=min(index, max(0, len(items) - 1)),
-                       items=[{k: v for k, v in i.items() if k != "do"} for i in items],
+                       items=[{k: v for k, v in i.items() if not callable(v) and k != "do"} for i in items],
                        depth=len(self.stack))
         return out
 

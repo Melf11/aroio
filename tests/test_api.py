@@ -615,3 +615,6 @@ async def test_info_screen_status(client, device):
     assert s["format"]["rate"] and isinstance(s["position"], float) and s["volume"] is not None
     assert s["fixed_level"] is False and s["rotate"] == 0
     assert (await client.get("/api/v1/internal/cover")).status in (200, 302, 404)
+    device.on_cec_key("KEY_OK")                                  # the TV menu goes out as JSON too
+    s = await (await client.get("/api/v1/internal/status")).json()
+    assert s["menu"]["open"] and any(i["label"] == "Lautstärke" for i in s["menu"]["items"])
