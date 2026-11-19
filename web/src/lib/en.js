@@ -2,8 +2,6 @@
 export default {
   // navigation and texts passed through variables (not found by the checker)
   'Start': 'Home',
-  'Startlautstärke (%)': 'Start volume (%)',
-  'Lautstärke nach dem Einschalten.': 'Volume after switching on.',
   'Höchste Lautstärke (%)': 'Maximum volume (%)',
   'Schützt Lautsprecher und Ohren.': 'Protects speakers and ears.',
   'CamillaDSP chunksize': 'CamillaDSP chunksize',
@@ -280,6 +278,8 @@ export default {
   'Name des Aroio': 'Name of the Aroio',
   'Name für diese Einstellung': 'Name for this setting',
   'Name nicht erkannt': 'Name not recognised',
+  'Höchstens nach dem Einschalten (%)': 'At most after switching on (%)',
+  'Der Aroio merkt sich die Lautstärke. Nach dem Einschalten gilt die zuletzt eingestellte, aber höchstens dieser Wert.': 'The Aroio remembers the volume. After switching on it uses the last one, but at most this value.',
   'Erneut suchen': 'Check again',
   'Zuletzt gesucht: {when}': 'Last checked: {when}',
   'Kopfhörer': 'Headphones',

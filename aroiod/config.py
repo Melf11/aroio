@@ -20,7 +20,7 @@ from .store import atomic_write_json, load_json
 
 log = logging.getLogger("aroiod.config")
 
-VERSION = 2
+VERSION = 3
 
 RATES = [44100, 48000, 88200, 96000, 176400, 192000]
 HOSTNAME_RE = r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$"
@@ -101,7 +101,8 @@ SCHEMA = {
         "rate_mode": F(str, "follow", choices=["follow", "fixed"]),
         "fixed_rate": F(int, 96000, choices=RATES),
         "resampler": F(str, "balanced", choices=["fast", "balanced", "best"]),
-        "start_volume": F(int, 30, lo=0, hi=100),
+        # the last volume comes back after a restart, but at most this (power cut at 95 %)
+        "start_volume_max": F(int, 70, lo=0, hi=100),
         "max_rate": F(int, 192000, choices=RATES),      # highest rate the DAC takes
         "volume_limit": F(int, 100, lo=10, hi=100),
         "output": F(str, "auto", maxlen=60),
@@ -328,7 +329,19 @@ def _wifi_switch_to_network(cfg):
     return cfg
 
 
-UPGRADES = {1: _wifi_switch_to_network}
+def _start_volume_is_a_limit(cfg):
+    """2 -> 3: the volume is kept over a restart; start_volume (always used after a start)
+    becomes the highest volume after a start. A value someone chose (not the default 30)
+    stays as that limit."""
+    audio = cfg.get("audio")
+    if isinstance(audio, dict) and "start_volume" in audio:
+        old = audio.pop("start_volume")
+        if isinstance(old, int) and old != 30:
+            audio["start_volume_max"] = old
+    return cfg
+
+
+UPGRADES = {1: _wifi_switch_to_network, 2: _start_volume_is_a_limit}
 
 
 def upgrade(cfg):

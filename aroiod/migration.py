@@ -153,8 +153,8 @@ def migrate(text, filter_files=()):
     vol = _int(u.get("VOLUME_START", u.get("VOL_START")))
     if vol is not None:
         # old: attenuation in dB (0 = full). New: percent. -60 dB..0 dB -> 0..100
-        audio["start_volume"] = max(0, min(100, round(100 + vol * 100 / 60))) if vol <= 0 else 100
-        rep.add("Ton", "Startlautstärke", f"{audio['start_volume']} %")
+        audio["start_volume_max"] = max(0, min(100, round(100 + vol * 100 / 60))) if vol <= 0 else 100
+        rep.add("Ton", "Höchste Lautstärke nach dem Einschalten", f"{audio['start_volume_max']} %")
     tuned = []
     for key, target in (("SQUEEZE_ALSABUFFER", None), ("SQUEEZE_INTBUFFER", "lms_buffer_kb"),
                         ("SP_OUTBUFFER", None), ("JACKBUFFER", None), ("JACKPERIOD", None), ("BF_PARTITIONS", None)):

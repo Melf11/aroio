@@ -16,11 +16,11 @@ def test_defaults_written_and_reloaded(tmp_path):
 
 def test_patch_validates_and_keeps_old_on_error(tmp_path):
     c = Config(tmp_path / "c.json")
-    c.patch({"device": {"name": "Wohnzimmer"}, "audio": {"start_volume": 40}})
+    c.patch({"device": {"name": "Wohnzimmer"}, "audio": {"start_volume_max": 40}})
     assert c.get("device.name") == "Wohnzimmer"
     with pytest.raises(Invalid) as exc:
-        c.patch({"device": {"name": "Küche"}, "audio": {"start_volume": 400}})
-    assert exc.value.path == "audio.start_volume"
+        c.patch({"device": {"name": "Küche"}, "audio": {"start_volume_max": 400}})
+    assert exc.value.path == "audio.start_volume_max"
     assert c.get("device.name") == "Wohnzimmer"          # nothing applied
 
 
@@ -63,3 +63,10 @@ def test_broken_or_old_file_is_repaired(tmp_path):
     assert c.get("audio.rate_mode") == "follow"
     assert c.get("device.language") == "de"
     assert "stale" not in c.data
+
+
+def test_start_volume_becomes_a_limit():
+    """3: the volume is kept over a restart; a chosen start volume stays as the highest one."""
+    from aroiod.config import upgrade
+    assert upgrade({"version": 2, "audio": {"start_volume": 30}})["audio"] == {}
+    assert upgrade({"version": 2, "audio": {"start_volume": 45}})["audio"] == {"start_volume_max": 45}

@@ -30,7 +30,7 @@
   }
 
   const numbers = [
-    ['start_volume', 'Startlautstärke (%)', 'Lautstärke nach dem Einschalten.'],
+    ['start_volume_max', 'Höchstens nach dem Einschalten (%)', 'Der Aroio merkt sich die Lautstärke. Nach dem Einschalten gilt die zuletzt eingestellte, aber höchstens dieser Wert.'],
     ['volume_limit', 'Höchste Lautstärke (%)', 'Schützt Lautsprecher und Ohren.'],
     ['chunksize', 'CamillaDSP chunksize', '0 = gemessener Standard für dieses Gerät.'],
     ['target_level', 'CamillaDSP target_level', '0 = doppelte chunksize.'],

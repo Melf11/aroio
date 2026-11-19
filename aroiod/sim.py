@@ -108,6 +108,7 @@ class SimWorld:
         self.too_loud_next = False
         self.internet = True
         self.proxy = ""
+        self.source_volumes = {}
         self.lan = True
         self.wifi_ssid = None
         self.lyrion_external = "192.168.1.10"
@@ -302,6 +303,10 @@ class SimWorld:
     def set_volume(self, db):
         self.volume_db = db
         self.publish_sim()
+
+    def source_volume(self, sid, percent):
+        """The source's own volume control follows the Aroio (Spotify's slider)."""
+        self.source_volumes[sid] = percent
 
     def rename(self, name):
         self.log(f"Name überall gesetzt: {name} (AirPlay, Spotify, UPnP, Bluetooth, Lyrion)")

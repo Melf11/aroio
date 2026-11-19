@@ -683,3 +683,54 @@ def test_soloist_log_filter(tmp_path):
     out = subprocess.run([awk, "-f", str(script)], input=log, capture_output=True, text=True, check=True).stdout
     assert out.splitlines() == ["W: Something odd", "became active device", "2026-11-18 10:16:28.434: shutting down"]
     assert json.loads((tmp_path / "fmt").read_text()) == {"codec": "flac", "bitrate": 700000, "rate": 44100}
+
+
+async def test_volume_is_kept_over_a_restart(tmp_path):
+    """The last volume comes back after a restart, at most audio.start_volume_max."""
+    from aroiod.__main__ import create
+    from aroiod import engine
+    d = create(tmp_path / "d", sim=True, model="AroioLT", fast=True)
+    assert d.volume == engine.INITIAL_VOLUME
+    d.set_volume(value=55)
+    assert not (tmp_path / "d" / "volume.json").exists()      # written a moment later (knob)
+    d.set_volume(value=62)
+    d._volume_save.cancel()
+    d.save_volume()
+    assert create(tmp_path / "d", sim=True, model="AroioLT", fast=True).volume == 62
+    d.set_volume(value=95)
+    d.save_volume()
+    d2 = create(tmp_path / "d", sim=True, model="AroioLT", fast=True)
+    assert d2.volume == 70                                    # power cut at 95 %: starts at 70
+    d2.patch_config({"audio": {"start_volume_max": 100}})
+    assert create(tmp_path / "d", sim=True, model="AroioLT", fast=True).volume == 95
+    d2.factory_reset()
+    assert d2.volume == engine.INITIAL_VOLUME and not (tmp_path / "d" / "volume.json").exists()
+
+
+async def test_spotify_slider_is_the_aroio_volume(device):
+    """Soloist's volume (the slider in Spotify) is the Aroio's volume; its first report
+    (always 100 %, -i 100) is not taken, and the Aroio's volume is sent to the slider."""
+    from aroiod import soloist
+    unity = []
+    c = soloist.SoloistClient(device)
+    sent = []
+
+    async def send(command, **fields):
+        sent.append((command, fields))
+        return True
+
+    async def fake_unity(delay=0.3):
+        unity.append(delay)
+    c.send, c.unity = send, fake_unity
+    device.set_volume(value=40)
+    await c.handle({"type": "playback_state", "status": "playing", "volume": 100})
+    await asyncio.sleep(0)
+    assert device.source == "spotify" and device.volume == 40          # first report ignored
+    assert device.world.source_volumes["spotify"] == 40                # Aroio -> slider on start
+    await c.handle({"type": "volume_changed", "volume": 25})
+    await asyncio.sleep(0)
+    assert device.volume == 25 and unity                               # stream back to 100 %
+    await c.set_volume(50)
+    assert sent[-1] == ("set_volume", {"volume": 50})
+    await c.handle({"type": "volume_changed", "volume": 50})           # echo: no change
+    assert device.volume == 25

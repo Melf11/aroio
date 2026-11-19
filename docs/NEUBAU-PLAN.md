@@ -303,7 +303,7 @@ Jeder Schritt ist ein eigener Bildschirm mit genau einer Aufgabe, Fortschrittsan
 | `RATE`, `RESAMPLING` | `audio.rate_mode` (feste Rate → „fest“, sonst „folgen“), Resampler-Qualität |
 | `SQUEEZE_*`, `SP_*`, `JACKBUFFER`, `JACKPERIOD`, `BF_PARTITIONS` | Expertenwerte. Übernommen werden nur Werte, die vom alten Standard abwichen. |
 | `SERVERNAME`, `SERVERPORT`, `SQUEEZEUSER`, `SQUEEZEPWD` | `sources.squeezelite.server`, Zugangsdaten verschlüsselt in `/data/secrets` |
-| `VOLUME_START` | `audio.start_volume` |
+| `VOLUME_START` | `audio.start_volume_max` (die Lautstärke wird gespeichert, das ist die Obergrenze nach dem Start) |
 | `DISPLAY_ROTATE` | `display.rotate` |
 | `ONBOARD_WIFI`, `ONBOARD_BLUETOOTH`, `BTRECONNECT` | `hardware.*`, `bluetooth.*` |
 | `USERPASSWD` | Zugangsschutz der App (optional, neu gehasht) |

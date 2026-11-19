@@ -11,6 +11,7 @@ rate and no resampling.
 """
 
 import asyncio
+import json
 import logging
 import math
 import time
@@ -20,7 +21,7 @@ from pathlib import Path
 from . import dsp, models, proxy
 from .config import RATES, Config, Invalid
 from .library import PROVIDERS, SimLibrary
-from .store import Secrets, atomic_write_bytes
+from .store import Secrets, atomic_write_bytes, atomic_write_json
 
 log = logging.getLogger("aroiod.engine")
 
@@ -51,6 +52,8 @@ def volume_db(percent):
 
 
 INTERNET_TEST_URL = "https://api.github.com/zen"
+INITIAL_VOLUME = 30          # before anything was ever set (new device, factory reset)
+VOLUME_SAVE_DELAY = 2.5      # s after the last change: a turn of the knob is one write
 
 
 class Device:
@@ -74,7 +77,8 @@ class Device:
         self.meta = None            # current track meta
         self.pos_base, self.started_at = 0.0, None
         self.shuffle, self.repeat = False, "off"
-        self.volume = self.config.get("audio.start_volume")
+        self.volume = self._start_volume()
+        self._volume_save = None
         self.muted = False
         self.compare_bypass = False
         self.rate = 48000
@@ -426,7 +430,8 @@ class Device:
         """Volume from the sending device (iPhone over AirPlay, phone over Bluetooth)."""
         if self.fixed_level:
             return
-        self.set_volume(value=max(0, min(int(round(percent)), self.config.get("audio.volume_limit", 100))))
+        self.set_volume(value=max(0, min(int(round(percent)), self.config.get("audio.volume_limit", 100))),
+                        from_source=True)
 
     def set_rate(self, rate):
         rate = int(rate)
@@ -451,6 +456,8 @@ class Device:
             self.hub.notice(f"{SOURCES[sid]['name']} spielt jetzt, {SOURCES[prev]['name']} wurde angehalten.",
                             key="source_switch")
         self.source = sid
+        if prev != sid and not self.fixed_level:
+            self.world.source_volume(sid, self.volume)    # e.g. Spotify's slider shows the Aroio's
         if sid != "lms":
             self._cancel_end()
             self.meta = meta
@@ -684,7 +691,35 @@ class Device:
         self.publish_queue()
 
     # ── volume ───────────────────────────────────────────────────────────────
-    def set_volume(self, value=None, delta=None):
+    def _start_volume(self):
+        """The last volume (volume.json), at most audio.start_volume_max."""
+        try:
+            saved = int(json.loads((self.data / "volume.json").read_text())["volume"])
+        except (OSError, ValueError, KeyError, TypeError):
+            saved = INITIAL_VOLUME
+        return max(0, min(saved, self.config.get("audio.start_volume_max"), self.config.get("audio.volume_limit")))
+
+    def _save_volume_later(self):
+        """volume.json a moment after the last change (the knob sends many steps)."""
+        if self._volume_save:
+            self._volume_save.cancel()
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self.save_volume()
+            return
+        self._volume_save = loop.call_later(VOLUME_SAVE_DELAY, self.save_volume)
+
+    def save_volume(self):
+        self._volume_save = None
+        try:
+            atomic_write_json(self.data / "volume.json", {"volume": self.volume})
+        except OSError as exc:
+            log.warning("volume.json: %s", exc)
+
+    def set_volume(self, value=None, delta=None, from_source=False):
+        """from_source: the change came from the playing source's own control (phone);
+        not sent back to it."""
         if self.fixed_level:
             raise ValueError("Dieses Modell hat einen festen Ausgangspegel. Die Lautstärke stellst du am Verstärker.")
         limit = self.config.get("audio.volume_limit")
@@ -692,6 +727,9 @@ class Device:
         self.volume = int(max(0, min(limit, round(v))))
         self.muted = False
         self.world.set_volume(volume_db(self.volume))
+        if not from_source and self.source:
+            self.world.source_volume(self.source, self.volume)   # the phone's slider follows
+        self._save_volume_later()
         self.publish_player()
 
     def set_mute(self, on):
@@ -1149,7 +1187,8 @@ class Device:
             self.world.proxy_apply("")
         self.library.favorites.clear()
         self.library.recent.clear()
-        self.volume = self.config.get("audio.start_volume")
+        (self.data / "volume.json").unlink(missing_ok=True)
+        self.volume = self._start_volume()
         self.muted = False
         for f in (self.data / "filters").glob("*"):
             f.unlink()
@@ -1187,7 +1226,7 @@ class Device:
             builtin = [p for p in self.config.data["dsp"]["presets"] if p.get("origin") == "builtin"]
             patch["dsp"]["presets"] = builtin + [p for p in patch["dsp"]["presets"] if p["id"] not in {b["id"] for b in builtin}]
         self.patch_config(patch)
-        self.volume = self.config.get("audio.start_volume")
+        self.volume = self._start_volume()
         m["state"] = "applied"
         self.publish_all()
         self.apply_dsp()

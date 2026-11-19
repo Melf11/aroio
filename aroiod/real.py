@@ -586,6 +586,12 @@ class RealWorld:
     def set_volume(self, db):
         self._spawn(self.camilla.set_volume(db))
 
+    def source_volume(self, sid, percent):
+        """Spotify's slider shows the Aroio's volume (AirPlay/Bluetooth send theirs)."""
+        client = getattr(self, "soloist", None)
+        if sid == "spotify" and client is not None:
+            self._spawn(client.set_volume(percent))
+
     # ── sources ──
     def pause_source(self, sid, user=False):
         """The previous source must let go of the loopback (all players write to
