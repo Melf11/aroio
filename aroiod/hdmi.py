@@ -69,13 +69,14 @@ class Framebuffer:
         self.stride = int(open(f"{sysfs}/stride").read())
         self.fd = os.open(path, os.O_RDWR)
         self.mem = mmap.mmap(self.fd, self.stride * h)
-        self.mode = "BGRX" if self.bpp == 32 else "BGR;16"
+        if self.bpp not in (16, 32):
+            raise ValueError(f"{self.bpp} bit framebuffer")
 
     def blit(self, part, dest):
         """part (an image) to dest = (x0, y0) on the framebuffer."""
         x0, y0 = dest
         w, h = part.size
-        data = part.tobytes("raw", self.mode)
+        data = part.tobytes("raw", "BGRX") if self.bpp == 32 else rgb565(part)
         row = w * self.bpp // 8
         off = y0 * self.stride + x0 * self.bpp // 8
         for y in range(h):
@@ -91,6 +92,14 @@ class Framebuffer:
     def close(self):
         self.mem.close()
         os.close(self.fd)
+
+
+def rgb565(img):
+    """16 bit framebuffer (the KMS default without "-32" in video=): Pillow cannot pack it."""
+    import numpy as np
+    a = np.asarray(img.convert("RGB"), dtype=np.uint16)
+    v = ((a[..., 0] >> 3) << 11) | ((a[..., 1] >> 2) << 5) | (a[..., 2] >> 3)
+    return v.astype("<u2").tobytes()
 
 
 def to_output(img, box, size, rotate):

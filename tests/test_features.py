@@ -783,6 +783,12 @@ def test_info_screen_framebuffer(tmp_path):
     data = dev.read_bytes()
     assert data[40 + 12:40 + 16] == bytes([0, 128, 255, 0])       # B, G, R, X
     assert data[80 + 16:80 + 20] == bytes([0, 128, 255, 0]) and data[40 + 20:40 + 24] == bytes(4)
+    (sysfs / "bits_per_pixel").write_text("16\n")                # KMS default without -32
+    dev.write_bytes(bytes(40 * 4))
+    fb = hdmi.Framebuffer(str(dev), str(sysfs))
+    fb.blit(Image.new("RGB", (1, 1), (255, 128, 0)), (1, 0))
+    fb.close()
+    assert dev.read_bytes()[2:4] == (0xFC00 | (128 >> 2) << 5).to_bytes(2, "little")
     img = Image.new("RGB", (1920, 1080))
     part, at = hdmi.to_output(img, (0, 0, 1920, 1080), (1280, 720), 0)
     assert part.size == (1280, 720) and at == (0, 0)
