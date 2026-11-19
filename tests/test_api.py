@@ -603,3 +603,15 @@ async def test_mono_switch(client, device):
     assert {"type": "Mixer", "name": "mono"} in device.world.camilla["pipeline"]
     await client.patch("/api/v1/config", json={"dsp": {"mono": False}})
     assert device.world.camilla["pipeline"] == []          # bit-perfect again
+
+
+async def test_info_screen_status(client, device):
+    """What the HDMI info screen gets: device, addresses, track with format and cover id."""
+    s = await (await client.get("/api/v1/internal/status")).json()
+    assert s["name"] and s["hotspot"] is None and s["state"] == "stopped" and s["cover_id"] is None
+    await post(client, "/sim/external_start", {"source": "airplay"})
+    s = await (await client.get("/api/v1/internal/status")).json()
+    assert s["state"] == "playing" and s["source"] == "AirPlay" and s["title"]
+    assert s["format"]["rate"] and isinstance(s["position"], float) and s["volume"] is not None
+    assert s["fixed_level"] is False and s["rotate"] == 0
+    assert (await client.get("/api/v1/internal/cover")).status in (200, 302, 404)
