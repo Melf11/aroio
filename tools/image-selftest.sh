@@ -27,7 +27,7 @@ for f in usr/bin/camilladsp usr/bin/squeezelite usr/bin/shairport-sync usr/bin/u
          usr/lib/aroiod/aroiod/soloist.py usr/lib/systemd/system/aroio-soloist-update.timer \
          usr/lib/aroio/soloist-run usr/lib/aroio/soloist-log.awk \
          etc/systemd/system/multi-user.target.wants/squeezelite.service etc/systemd/system/multi-user.target.wants/upmpdcli.service \
-         etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/lib/aroio/infoscreen \
+         etc/systemd/system/multi-user.target.wants/aroio-infoscreen.service usr/share/fonts/inter/Inter-Bold.ttf \
          etc/systemd/system/data.mount.wants/aroio-grow-data.service usr/sbin/sfdisk usr/bin/partx usr/lib/systemd/systemd-growfs \
          usr/share/aroio/filters/BBCDipL96.dbl usr/share/aroio/filters/EchoR192.dbl usr/share/aroio/licenses.json \
          usr/lib/udev/rules.d/90-aroio-ir.rules usr/bin/ir-keytable \
@@ -85,6 +85,15 @@ grep -aq "5\.6\.[0-9]" "$R/usr/bin/shairport-sync" || { echo "shairport-sync ist
 chroot "$R" /usr/bin/python3 -c "import ssl, ctypes.util; ssl.create_default_context()" || { echo "Python ohne SSL"; fail=1; }
 # every module must import with the device's Python (it lacks e.g. xml): lazy imports fail only when used
 chroot "$R" /bin/sh -c 'cd /usr/lib/aroiod && /usr/bin/python3 -c "import importlib, pkgutil, aroiod; [importlib.import_module(\"aroiod.\" + m.name) for m in pkgutil.iter_modules(aroiod.__path__) if m.name != \"__main__\"]"' || { echo "aroiod-Modul laesst sich auf dem Geraet nicht importieren"; fail=1; }
+# HDMI info screen: Pillow with FreeType and JPEG, Inter, segno; one picture drawn in the image
+chroot "$R" /bin/sh -c 'cd /usr/lib/aroiod && /usr/bin/python3 -c "
+from PIL import ImageFont, features
+assert features.check(\"freetype2\") and features.check(\"jpg\"), \"Pillow ohne FreeType/JPEG\"
+ImageFont.truetype(\"/usr/share/fonts/inter/Inter-Bold.ttf\", 40)
+from aroiod.screen import Screen
+assert Screen().draw({\"name\": \"A\", \"hostname\": \"aroio\", \"lan\": \"192.168.1.2\"})
+"' || { echo "Infoscreen laesst sich im Image nicht zeichnen"; fail=1; }
+grep -q "^dtoverlay=vc4-kms-v3d" br2-external/board/rpi/aroio.txt || { echo "aroio.txt ohne KMS"; fail=1; }
 grep -q "$(sed -n 2p br2-external/board/rpi/rauc/release-cert.pem)" "$R/etc/rauc/keyring.pem" || { echo "Release-Zertifikat fehlt im Keyring"; fail=1; }
 [ -d "$R/usr/share/factory/var" ] || { echo "/var-Werkseinstellungen fehlen (read-only root)"; fail=1; }
 ls "$R"/etc/systemd/network/*.network >/dev/null 2>&1 || { echo "keine Netzwerkkonfiguration (DHCP)"; fail=1; }

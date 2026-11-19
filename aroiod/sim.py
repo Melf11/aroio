@@ -160,6 +160,9 @@ class SimWorld:
         self.boot_lines = lines
         self.log("Boot-Partition aroio.txt: " + " | ".join(lines[1:] or ["(leer)"]) + ", aktiv nach Neustart")
 
+    async def read_boot_config(self):
+        return getattr(self, "boot_lines", None)
+
     def test_signal(self, kind, channel, seconds):
         if kind:
             self.tone = {"kind": kind, "channel": channel, "at": time.time(), "until": time.time() + seconds}

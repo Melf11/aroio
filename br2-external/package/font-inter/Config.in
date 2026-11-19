@@ -1,0 +1,5 @@
+config BR2_PACKAGE_FONT_INTER
+	bool "font-inter"
+	help
+	  Inter (rsms.me/inter), the typeface of the HDMI info screen.
+	  Regular, SemiBold and Bold only.

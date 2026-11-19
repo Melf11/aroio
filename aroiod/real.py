@@ -500,6 +500,22 @@ class RealWorld:
     def write_boot_config(self, lines):
         self._spawn(self._write_boot_file("aroio.txt", "\n".join(lines) + "\n"))
 
+    async def read_boot_config(self):
+        """Lines of aroio.txt, None when the boot partition cannot be read."""
+        mnt = "/run/aroio/boot-read"
+        os.makedirs(mnt, exist_ok=True)
+        try:
+            await _run("mount", "-t", "vfat", "-o", "ro", "/dev/mmcblk0p1", mnt)
+        except RuntimeError as exc:
+            log.warning("boot partition: %s", exc)
+            return None
+        try:
+            return (Path(mnt) / "aroio.txt").read_text().splitlines()
+        except OSError:
+            return []
+        finally:
+            await _run("umount", mnt)
+
     async def _write_boot_file(self, name, text):
         mnt = "/run/aroio/boot"
         os.makedirs(mnt, exist_ok=True)

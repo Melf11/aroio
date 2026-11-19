@@ -1,1 +1,1 @@
-root=@ROOT@ rauc.slot=@SLOT@ panic=10 rootfstype=squashfs ro rootwait cfg80211.ieee80211_regdom=DE quiet loglevel=3 console=tty3 fbcon=font:TER16x32 fsck.mode=skip systemd.show_status=0
+root=@ROOT@ rauc.slot=@SLOT@ panic=10 rootfstype=squashfs ro rootwait cfg80211.ieee80211_regdom=DE quiet loglevel=3 console=tty3 fbcon=font:TER16x32 vt.global_cursor_default=0 video=HDMI-A-1:1920x1080@60 video=HDMI-A-2:1920x1080@60 fsck.mode=skip systemd.show_status=0

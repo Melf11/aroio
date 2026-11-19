@@ -96,7 +96,8 @@ async def test_model_choice_and_boot_config(client, device):
     await client.patch("/api/v1/config", json={"hardware": {"model": "AroioEX", "display_rotate": 180}})
     s = await state(client)
     assert s["device"]["model"] == "AroioEX" and s["device"]["fixed_level"] and s["device"]["reboot_required"]
-    assert "display_rotate=2" in device.world.boot_lines
+    assert models.KMS_LINE in device.world.boot_lines                  # info screen, CEC
+    assert not any("display_rotate" in l for l in device.world.boot_lines)   # the screen turns itself
     assert any("gpio-key" in l for l in device.world.boot_lines)
     assert not any("rotary-encoder" in l for l in device.world.boot_lines)
 
@@ -746,3 +747,58 @@ async def test_spotify_slider_is_the_aroio_volume(device, tmp_path):
     await c2.handle({"type": "volume_changed", "volume": 30})
     await asyncio.sleep(0)
     assert sent[-1] == ("set_volume", {"volume": 100}) and su.world.volume_db == 0.0
+
+
+def test_info_screen_draws_only_what_changed():
+    """aroiod/screen.py: a whole picture on a new scene, then only the progress bar."""
+    from aroiod.screen import Screen
+    st = {"name": "Wohnzimmer", "state": "playing", "source": "Spotify", "title": "Black Honey",
+          "artist": "Thrice", "duration": 239.0, "position": 87.0, "format": {"codec": "FLAC", "rate": 44100},
+          "volume": 42, "now": 1795000000}
+    sc = Screen()
+    assert sc.draw(st)[0] == (0, 0, 1920, 1080)
+    assert sc.draw(st) == []                                     # nothing changed
+    boxes = sc.draw({**st, "position": 88.0})
+    assert len(boxes) == 1 and boxes[0][3] - boxes[0][1] < 100   # the progress bar only
+    assert sc.draw({**st, "title": "Hurricane"})[0] == (0, 0, 1920, 1080)
+    for idle in ({"name": "A", "hostname": "aroio", "lan": "192.168.1.2"}, {"hotspot": "Aroio-Einrichtung-1"},
+                 {"starting": True}):
+        assert Screen().draw(idle)[0] == (0, 0, 1920, 1080)
+
+
+def test_info_screen_framebuffer(tmp_path):
+    """aroiod/hdmi.py writes BGRX rows with the stride; scaled and turned parts."""
+    from PIL import Image
+    from aroiod import hdmi
+    sysfs = tmp_path / "fb0"
+    sysfs.mkdir()
+    (sysfs / "virtual_size").write_text("8,4\n")
+    (sysfs / "bits_per_pixel").write_text("32\n")
+    (sysfs / "stride").write_text("40\n")                        # 10 px per row: padding
+    dev = tmp_path / "fb"
+    dev.write_bytes(bytes(40 * 4))
+    fb = hdmi.Framebuffer(str(dev), str(sysfs))
+    fb.blit(Image.new("RGB", (2, 2), (255, 128, 0)), (3, 1))
+    fb.close()
+    data = dev.read_bytes()
+    assert data[40 + 12:40 + 16] == bytes([0, 128, 255, 0])       # B, G, R, X
+    assert data[80 + 16:80 + 20] == bytes([0, 128, 255, 0]) and data[40 + 20:40 + 24] == bytes(4)
+    img = Image.new("RGB", (1920, 1080))
+    part, at = hdmi.to_output(img, (0, 0, 1920, 1080), (1280, 720), 0)
+    assert part.size == (1280, 720) and at == (0, 0)
+    part, at = hdmi.to_output(img, (0, 0, 100, 50), (1920, 1080), 180)
+    assert part.size == (100, 50) and at == (1820, 1030)
+
+
+async def test_boot_config_is_brought_up_to_date(device):
+    """After an update aroio.txt may lack new lines (KMS for the info screen): aroiod
+    rewrites it once at start and asks for a reboot; comments do not count."""
+    from aroiod import models
+    want = device._boot_lines(device.config.data["hardware"])
+    device.world.boot_lines = ["# old comment"] + [l for l in want if l != models.KMS_LINE and not l.startswith("#")]
+    await device.sync_boot_config()
+    assert models.KMS_LINE in device.world.boot_lines and device.reboot_required
+    device.reboot_required = False
+    device.world.boot_lines = ["# other comment"] + [l for l in want if not l.startswith("#")]
+    await device.sync_boot_config()
+    assert not device.reboot_required

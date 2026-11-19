@@ -104,10 +104,18 @@ IR_ACTIONS = ["KEY_PLAYPAUSE", "KEY_STOP", "KEY_NEXT", "KEY_PREVIOUS", "KEY_VOLU
               "KEY_MUTE", "KEY_1", "KEY_2", "KEY_3", "KEY_4", "KEY_5"]
 
 
-def boot_lines(driver_id, model_id, rotate=0, ir=False):
-    """Contents of aroio.txt on the boot partition: DAC driver, the model's controls
-    (rotary encoder, key) and the display rotation. Changes need a reboot."""
+# KMS graphics: the HDMI info screen (framebuffer, display detection) and CEC. No HDMI
+# audio (it would add sound cards). In aroio.txt, not config.txt: updates do not replace
+# config.txt, aroiod keeps aroio.txt up to date (Device.sync_boot_config).
+KMS_LINE = "dtoverlay=vc4-kms-v3d,noaudio"
+
+
+def boot_lines(driver_id, model_id, ir=False):
+    """Contents of aroio.txt on the boot partition: graphics, DAC driver and the model's
+    controls (rotary encoder, key). Changes need a reboot. The info screen turns itself
+    (hardware.display_rotate), so that needs no line here."""
     lines = dac_driver_lines(driver_id)
+    lines.insert(1, KMS_LINE)
     model = MODELS.get(model_id) or {}
     enc = model.get("encoder")
     if enc:
@@ -117,6 +125,4 @@ def boot_lines(driver_id, model_id, rotate=0, ir=False):
         lines.append(f'dtoverlay=gpio-key,gpio={key},keycode=164,label="PLAYPAUSE"')
     if ir:
         lines.append(f"dtoverlay=gpio-ir,gpio_pin={COMMON_PINS['ir']}")
-    if rotate:
-        lines.append(f"display_rotate={rotate // 90}")
     return lines

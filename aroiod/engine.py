@@ -141,6 +141,7 @@ class Device:
         self.apply_dsp()
         if getattr(self.world, "auto_updates", False):
             self._update_task = asyncio.ensure_future(self._update_loop())
+        asyncio.ensure_future(self.sync_boot_config())
 
     async def _update_loop(self, first_delay=300, interval=600, check_every=86400):
         """Look for updates once a day; with update.auto install them at night while nothing plays."""
@@ -1096,10 +1097,26 @@ class Device:
 
     def _boot_lines(self, hw):
         model = hw["model"] if hw["model"] in models.MODELS else self.world.model
-        return models.boot_lines(hw["dac_driver"], model, hw["display_rotate"], ir=hw["ir_enabled"])
+        return models.boot_lines(hw["dac_driver"], model, ir=hw["ir_enabled"])
 
     def write_boot_config(self):
         self.world.write_boot_config(self._boot_lines(self.config.data["hardware"]))
+
+    async def sync_boot_config(self):
+        """After a start (e.g. an update brought new lines, like the KMS graphics): aroio.txt
+        as the configuration says. Only rewritten when its lines differ; a reboot makes
+        them active."""
+        current = await self.world.read_boot_config()
+        if current is None:
+            return
+        want = self._boot_lines(self.config.data["hardware"])
+        def strip(lines):
+            return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+        if strip(current) != strip(want):
+            log.info("aroio.txt out of date, rewritten (active after a reboot)")
+            self.world.write_boot_config(want)
+            self.reboot_required = True
+            self.publish_device()
 
     # ── room measurement mode ────────────────────────────────────────────────
     def begin_measurement(self):

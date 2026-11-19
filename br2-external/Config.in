@@ -2,4 +2,5 @@ menu "Aroio"
 	source "$BR2_EXTERNAL_AROIO_PATH/package/camilladsp/Config.in"
 	source "$BR2_EXTERNAL_AROIO_PATH/package/aroiod/Config.in"
 	source "$BR2_EXTERNAL_AROIO_PATH/package/aroio-web/Config.in"
+	source "$BR2_EXTERNAL_AROIO_PATH/package/font-inter/Config.in"
 endmenu

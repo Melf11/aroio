@@ -1,3 +1,7 @@
 # DAC driver and device controls. The setup guide in the app writes this file
 # (Aroio SU/EX/LT: Aroio DAC; other devices: the chosen sound card). Until then
 # DAC HATs with EEPROM are detected by the firmware.
+# Same lines as aroiod writes for the default configuration (models.boot_lines), so the
+# first start needs no extra reboot: KMS graphics (HDMI info screen, CEC), IR receiver.
+dtoverlay=vc4-kms-v3d,noaudio
+dtoverlay=gpio-ir,gpio_pin=25

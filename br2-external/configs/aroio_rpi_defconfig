@@ -121,3 +121,10 @@ BR2_PACKAGE_LIBV4L=y
 BR2_PACKAGE_LIBV4L_UTILS=y
 BR2_PACKAGE_AROIOD=y
 BR2_PACKAGE_AROIO_WEB=y
+# HDMI info screen (aroiod/screen.py, aroiod/hdmi.py): drawn with Pillow into the KMS
+# framebuffer, Inter, QR codes for the app and the setup hotspot
+BR2_PACKAGE_PYTHON_PILLOW=y
+BR2_PACKAGE_FREETYPE=y
+BR2_PACKAGE_JPEG=y
+BR2_PACKAGE_PYTHON_SEGNO=y
+BR2_PACKAGE_FONT_INTER=y

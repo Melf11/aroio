@@ -1,16 +1,19 @@
 [Unit]
-Description=Aroio info screen on HDMI (tty1)
+Description=Aroio info screen on HDMI (only draws while a display is connected)
 After=aroiod.service
 Conflicts=getty@tty1.service
 
 [Service]
-ExecStart=/usr/lib/aroio/infoscreen
+# aroiod/hdmi.py: Pillow into the KMS framebuffer; stdin is tty1 so it can switch the
+# text console to graphics mode
+ExecStart=/usr/lib/aroio/aroio-python -m aroiod.hdmi
 StandardInput=tty
-StandardOutput=tty
+StandardOutput=journal
+StandardError=journal
 TTYPath=/dev/tty1
 TTYReset=yes
 TTYVTDisallocate=yes
-Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8 TERM=linux
+Nice=10
 Restart=always
 RestartSec=5
 

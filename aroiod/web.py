@@ -206,11 +206,42 @@ async def internal_status(request):
     s = d.hub.snapshot()
     p, n = s.get("player") or {}, s.get("network") or {}
     t = p.get("track") or {}
+    sig = p.get("signal") or {}
+    fmt = dict(t.get("format") or {})
+    fmt.setdefault("rate", sig.get("rate_out"))
     return ok({"name": d.config.get("device.name"), "hostname": d.config.get("network.hostname"),
                "lan": (n.get("lan") or {}).get("address"), "wifi": (n.get("wifi") or {}).get("address"),
-               "hotspot": (n.get("hotspot") or {}).get("ssid"), "state": p.get("state"),
-               "source": p.get("source_name"), "title": t.get("title"), "artist": t.get("artist"),
-               "volume": p.get("volume"), "rate": (p.get("signal") or {}).get("rate_out")})
+               "hotspot": (n.get("hotspot") or {}).get("ssid") if (n.get("hotspot") or {}).get("active") else None,
+               "state": p.get("state"), "source": p.get("source_name"),
+               "title": t.get("title"), "artist": t.get("artist"), "album": t.get("album"),
+               "cover_id": t.get("image"), "duration": t.get("duration") or None,
+               "position": round(d.position(), 1), "format": fmt,
+               "preset": sig.get("preset") if sig.get("processing") else None,
+               "volume": p.get("volume"), "muted": p.get("muted"), "fixed_level": d.fixed_level,
+               "rotate": d.config.get("hardware.display_rotate"),
+               "rate": sig.get("rate_out")})
+
+
+@routes.get(A + "/internal/cover")
+async def internal_cover(request):
+    """The current cover for the info screen (localhost only): aroiod fetches covers from
+    the internet itself (proxy, company certificate), the screen only talks to aroiod."""
+    if request.remote not in ("127.0.0.1", "::1"):
+        raise web.HTTPForbidden()
+    d = dev(request)
+    url = ((d.hub.snapshot().get("player") or {}).get("track") or {}).get("image")
+    if not url:
+        raise web.HTTPNotFound()
+    if url.startswith("/"):
+        raise web.HTTPFound(url)                 # served by aroiod itself (AirPlay, library)
+    cached = getattr(d, "_cover_cache", None)
+    if not cached or cached[0] != url:
+        try:
+            data = await d.world.fetch(url, 4 * 1024 * 1024)
+        except ValueError:
+            raise web.HTTPNotFound() from None
+        cached = d._cover_cache = (url, data)
+    return web.Response(body=cached[1], content_type="image/jpeg")
 
 
 # ── config ───────────────────────────────────────────────────────────────────
