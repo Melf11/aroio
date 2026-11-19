@@ -35,7 +35,8 @@ GIVE_DEVICE_POWER_STATUS, REPORT_POWER_STATUS = 0x8F, 0x90
 INACTIVE_SOURCE = 0x9D
 # answered by the kernel or not meant to be answered
 NO_ABORT = {FEATURE_ABORT, UI_PRESSED, UI_RELEASED, 0x9F, 0x83, 0x8C, 0x46, 0xA5, 0x47, 0x84, 0x87, 0x9E,
-            0x32, 0x8B, 0x89, 0xA0}
+            0x32, 0x8B, 0x89}
+TV = 0
 
 
 def osd_name(name):
@@ -152,6 +153,9 @@ class Adapter:
                 log.info("%s: TV switched to the Aroio", self.path)
             self.active = True
             self.send([me | BROADCAST, ACTIVE_SOURCE] + pa_bytes)
+            # "our menu is active": many TVs (Panasonic VIERA Link) pass the remote's
+            # keys only after this; Panasonic's own vendor command gets a Feature Abort
+            self.send([me | TV, MENU_STATUS, 0x00])
         else:
             self.active = False
 

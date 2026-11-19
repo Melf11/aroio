@@ -856,7 +856,10 @@ def test_cec_answers_what_tvs_ask():
     a = cec.Adapter("/dev/cec1", None)
     a.logical_address, a.physical_address, a.send = (lambda: 4), (lambda: 0x1000), sent.append
     a.handle([0x0F, cec.SET_STREAM_PATH, 0x10, 0x00])                       # TV switched to us
-    assert a.active and sent[-1] == [0x4F, cec.ACTIVE_SOURCE, 0x10, 0x00]
+    assert a.active and sent[-2:] == [[0x4F, cec.ACTIVE_SOURCE, 0x10, 0x00],
+                                      [0x40, cec.MENU_STATUS, 0x00]]        # Panasonic: keys only then
+    a.handle([0x04, 0xA0, 0x00, 0x80, 0x45, 0x06, 0x05])                    # Panasonic vendor command
+    assert sent[-1] == [0x40, cec.FEATURE_ABORT, 0xA0, 0x00]
     a.handle([0x0F, cec.REQUEST_ACTIVE_SOURCE])
     assert sent[-1] == [0x4F, cec.ACTIVE_SOURCE, 0x10, 0x00]
     a.handle([0x04, cec.GIVE_DEVICE_POWER_STATUS])
