@@ -156,10 +156,16 @@ def run():
     import signal
     screen, fb = None, None
     cover_id, cover = None, None
-    try:
-        expected = float(open(BOOT_SECONDS).read())
-    except (OSError, ValueError):
-        expected = 10.0
+    expected = None                         # read once /data is there (the screen starts before it)
+
+    def boot_seconds():
+        nonlocal expected
+        if expected is None:
+            try:
+                expected = float(open(BOOT_SECONDS).read())
+            except (OSError, ValueError):
+                return 10.0
+        return expected
     booting = read_uptime() < 120           # started with the system: progress bar until aroiod answers
 
     def stopping(_sig, _frame):
@@ -194,14 +200,14 @@ def run():
             if status is None:
                 status, rev = {"starting": True}, None
                 if booting:
-                    status["progress"] = boot_progress(read_uptime(), expected)
+                    status["progress"] = boot_progress(read_uptime(), boot_seconds())
                 time.sleep(0.25)
             else:
                 rev = (status.get("menu") or {}).get("rev")
                 if booting:
                     booting = False
                     up = read_uptime()
-                    if abs(up - expected) > 0.5:
+                    if abs(up - boot_seconds()) > 0.5:
                         try:
                             with open(BOOT_SECONDS, "w") as fh:
                                 fh.write(f"{up:.1f}\n")

@@ -18,3 +18,6 @@ fi
 echo "data partition $DEV: growing from $((END / 2048)) MiB to the end of $DISK ($((TOTAL / 2048)) MiB)"
 echo ", +" | sfdisk --no-reread --no-tell-kernel -N "$PART" "$DISK"
 partx -u --nr "$PART" "$DISK"
+# the kernel re-reads the partition: udev removes and adds the data device; mounting in
+# between fails ("status=32") and tmpfiles then created nothing on /data (no SSH host key)
+udevadm settle --timeout=10 || true

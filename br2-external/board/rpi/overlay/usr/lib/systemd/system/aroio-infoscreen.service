@@ -1,8 +1,10 @@
 [Unit]
 Description=Aroio info screen on HDMI (only draws while a display is connected)
-# early: the boot screen (logo, progress) until aroiod answers; not After=aroiod.service
-After=local-fs.target
-Conflicts=getty@tty1.service
+# early, before /data and the rest: the boot screen (logo, progress) until aroiod answers
+DefaultDependencies=no
+After=systemd-udevd.service
+Conflicts=getty@tty1.service shutdown.target
+Before=shutdown.target
 
 [Service]
 # aroiod/hdmi.py: Pillow into the KMS framebuffer; stdin is tty1 so it can switch the
@@ -21,4 +23,5 @@ RestartSec=5
 TimeoutStopSec=5
 
 [Install]
+# with DefaultDependencies=no it starts at once all the same
 WantedBy=multi-user.target
