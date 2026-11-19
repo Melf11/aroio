@@ -421,6 +421,11 @@ def test_soloist_helpers(tmp_path, monkeypatch):
             "creators": [{"entity": {"decorations": {"identity": {"name": "John Coltrane"}}}}],
             "parent": {"entity": {"decorations": {"identity": {"name": "Blue Train"}}}}}
     m = soloist.track_meta(item, {"position_ms": 61000, "speed": 0})
+    # how Soloist 1.3.10 really sends it: creators, parent and playback inside decorations
+    nested = {"uri": item["uri"], "decorations": {**item["decorations"], "creators": item["creators"],
+                                                  "parent": item["parent"], "playback": item["playback"]}}
+    n = soloist.track_meta(nested)
+    assert (n["artist"], n["album"], n["duration"], n["live"]) == ("John Coltrane", "Blue Train", 643.0, False)
     assert (m["title"], m["artist"], m["album"], m["duration"], m["image"], m["position"]) == \
         ("Blue Train", "John Coltrane", "Blue Train", 643.0, "https://i.scdn.co/b", 61.0)
 

@@ -228,10 +228,16 @@ def stream_format():
 def track_meta(item, position=None):
     """Soloist item (+ position) -> meta in the shape of the app (see sim._external_meta)."""
     item = item or {}
-    identity = (item.get("decorations") or {}).get("identity") or {}
-    duration = ((item.get("playback") or {}).get("duration_ms") or 0) / 1000.0
+    deco = item.get("decorations") or {}
+    identity = deco.get("identity") or {}
+
+    def part(key):
+        # Soloist puts creators, parent (album) and playback inside "decorations"
+        return deco.get(key) if deco.get(key) is not None else item.get(key)
+    duration = ((part("playback") or {}).get("duration_ms") or 0) / 1000.0
+    parent = part("parent")
     meta = {"id": item.get("uri") or "spotify", "title": identity.get("name") or "Spotify",
-            "artist": _names(item.get("creators")), "album": _names([item.get("parent")]) if item.get("parent") else "",
+            "artist": _names(part("creators")), "album": _names([parent]) if parent else "",
             "duration": round(duration, 1), "image": _cover(item), "provider": "spotify", "live": not duration,
             "format": stream_format()}
     if position:
