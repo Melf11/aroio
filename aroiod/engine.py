@@ -363,7 +363,7 @@ class Device:
         fixed = c["audio"]["rate_mode"] == "fixed"
         rate_out = c["audio"]["fixed_rate"] if fixed else rate_in
         note = None
-        max_rate = c["audio"]["max_rate"]
+        max_rate = min(c["audio"]["max_rate"], self.world.output_max_rate() or c["audio"]["max_rate"])
         if rate_out > max_rate:
             # highest rate the DAC takes, same family if possible (44.1k / 48k multiples)
             allowed = [r for r in sorted(RATES) if r <= max_rate]

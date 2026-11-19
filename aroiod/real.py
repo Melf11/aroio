@@ -50,6 +50,37 @@ def read_cards():
         return []
 
 
+# HDMI (KMS): the vc4 cards take only IEC958 frames; alsa-lib's "hdmi:" device converts
+# (cards/vc4-hdmi.conf). Which TV is on which port and what it takes: the ELD.
+ASOUND = "/proc/asound"
+
+
+def hdmi_eld(card_id, root=ASOUND):
+    """The ELD of an HDMI card as a dict ({} = nothing with sound connected)."""
+    try:
+        text = Path(f"{root}/{card_id}/eld#0").read_text()
+    except OSError:
+        return {}
+    eld = {}
+    for line in text.splitlines():
+        k, _, v = line.partition("\t")
+        eld[k.strip()] = v.strip()
+    return eld if int(eld.get("sad_count", "0") or 0) > 0 else {}
+
+
+def hdmi_max_rate(card_id, root=ASOUND):
+    """Highest LPCM rate the connected TV/receiver takes (48 kHz if it does not say)."""
+    eld, rates = hdmi_eld(card_id, root), []
+    for k, v in eld.items():
+        if k.endswith("_rates") and "LPCM" in eld.get(k.replace("_rates", "_coding_type"), "LPCM"):
+            rates += [int(x) for x in v.split("]")[-1].split() if x.isdigit()]
+    return max(rates) if rates else 48000
+
+
+def hdmi_device(card_id):
+    return f"hdmi:CARD={card_id},DEV=0"
+
+
 def find_dac(cards, preferred=""):
     """The output device: configured name, else the first I2S/HAT DAC, else a USB DAC
     that is not a measurement microphone, else HDMI."""
@@ -60,10 +91,12 @@ def find_dac(cards, preferred=""):
         return bool(re.search(r"umik|minidsp|mic", c["name"] + c["id"], re.I))
     hats = [c for c in cards if c["id"] not in ignore and not c["id"].startswith("vc4hdmi") and c["driver"] != "USB-Audio"]
     usb = [c for c in cards if c["driver"] == "USB-Audio" and not is_mic(c)]
-    hdmi = [c for c in cards if c["id"].startswith("vc4hdmi")]
-    for group in (hats, usb, hdmi):
+    hdmi = sorted((c for c in cards if c["id"].startswith("vc4hdmi")), key=lambda c: not hdmi_eld(c["id"]))
+    for group in (hats, usb):
         if group:
             return f"hw:CARD={group[0]['id']},DEV=0"
+    if hdmi:
+        return hdmi_device(hdmi[0]["id"])           # the port with a TV first
     return "hw:0,0"
 
 
@@ -91,13 +124,26 @@ def list_outputs(cards, driver=None):
             continue
         kind = output_kind(c)
         name = "Aroio DAC" if kind == "hat" and driver == "aroio" else CARD_NAMES.get(c["id"], c["name"])
-        out.append({"id": f"hw:CARD={c['id']},DEV=0", "name": name, "card": c["id"], "kind": kind})
+        dev = f"hw:CARD={c['id']},DEV=0"
+        if c["id"].startswith("vc4hdmi"):
+            port = int(c["id"][-1]) + 1 if c["id"][-1].isdigit() else 1
+            tv = hdmi_eld(c["id"]).get("monitor_name")
+            name, dev = f"HDMI {port}" + (f" ({tv})" if tv else ""), hdmi_device(c["id"])
+        out.append({"id": dev, "name": name, "card": c["id"], "kind": kind})
     order = {"hat": 0, "usb": 1, "analog": 2, "hdmi": 3}
     return sorted(out, key=lambda o: (order[o["kind"]], o["card"]))
 
 
 def resolve_output(cards, preferred):
-    """The configured output if it is present, else the automatic choice."""
+    """The configured output if it is present, else the automatic choice. HDMI: the port
+    the TV is on (the cable may have moved), older settings name it hw:CARD=vc4hdmiN."""
+    m = re.match(r"(?:hw|hdmi):CARD=(vc4hdmi\d)", preferred or "")
+    if m:
+        ports = [c["id"] for c in cards if c["id"].startswith("vc4hdmi")]
+        if m[1] in ports and (hdmi_eld(m[1]) or not any(hdmi_eld(p) for p in ports)):
+            return hdmi_device(m[1])
+        live = [p for p in ports if hdmi_eld(p)]
+        return hdmi_device(live[0]) if live else find_dac(cards)
     if preferred and preferred != "auto" and any(o["id"] == preferred for o in list_outputs(cards)):
         return preferred
     return find_dac(cards)
@@ -493,6 +539,11 @@ class RealWorld:
     def dac_device(self):
         out = self.device.config.get("audio.output") if self.device else "auto"
         return resolve_output(read_cards(), out)
+
+    def output_max_rate(self):
+        """What the output takes at most, when it says so itself (HDMI: the TV's ELD)."""
+        m = re.match(r"hdmi:CARD=(\w+)", self.dac_device)
+        return hdmi_max_rate(m[1]) if m else None
 
     def audio_outputs(self):
         return list_outputs(read_cards(), self.device.config.get("hardware.dac_driver") if self.device else None)

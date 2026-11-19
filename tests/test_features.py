@@ -901,3 +901,29 @@ def test_cec_keys_are_not_ir_codes():
     r.handle(inputs.EV_KEY, 352, 1, "vc4-hdmi-1")
     r.handle(inputs.EV_MSC, inputs.MSC_SCAN, 0x1835, "gpio_ir_recv")
     assert got == [("cec", "KEY_UP"), ("cec", "KEY_UP"), ("cec", "KEY_OK"), ("ir", 0x1835)]
+
+
+def test_hdmi_output_follows_the_tv(tmp_path, monkeypatch):
+    """KMS HDMI: the hdmi: device (IEC958 by alsa-lib), the port with a TV (its ELD), at
+    most the TV's rate; an old hw:CARD=vc4hdmi0 setting moves to the port in use."""
+    from aroiod import real
+    (tmp_path / "vc4hdmi0").mkdir()
+    (tmp_path / "vc4hdmi1").mkdir()
+    (tmp_path / "vc4hdmi0" / "eld#0").write_text("monitor_name\t\nsad_count\t0\n")
+    (tmp_path / "vc4hdmi1" / "eld#0").write_text(
+        "monitor_name\t\tPanasonic-TV\nsad_count\t\t1\nsad0_coding_type\t[0x1] LPCM\n"
+        "sad0_rates\t\t[0xe0] 32000 44100 48000\n")
+    monkeypatch.setattr(real, "ASOUND", str(tmp_path))
+    monkeypatch.setattr(real.hdmi_eld, "__defaults__", (str(tmp_path),))
+    monkeypatch.setattr(real.hdmi_max_rate, "__defaults__", (str(tmp_path),))
+    cards = [{"index": 0, "id": "Loopback", "driver": "Loopback", "name": "Loopback"},
+             {"index": 1, "id": "vc4hdmi0", "driver": "vc4-hdmi", "name": "vc4-hdmi-0"},
+             {"index": 2, "id": "vc4hdmi1", "driver": "vc4-hdmi", "name": "vc4-hdmi-1"}]
+    assert real.find_dac(cards) == "hdmi:CARD=vc4hdmi1,DEV=0"
+    assert real.resolve_output(cards, "hw:CARD=vc4hdmi0,DEV=0") == "hdmi:CARD=vc4hdmi1,DEV=0"
+    names = {o["id"]: o["name"] for o in real.list_outputs(cards)}
+    assert names["hdmi:CARD=vc4hdmi1,DEV=0"] == "HDMI 2 (Panasonic-TV)"
+    assert real.hdmi_max_rate("vc4hdmi1") == 48000
+    from aroiod import models
+    assert models.KMS_AUDIO_LINE in models.boot_lines("onboard", "RaspberryPi")
+    assert models.KMS_LINE in models.boot_lines("aroio", "AroioLT")

@@ -108,6 +108,7 @@ IR_ACTIONS = ["KEY_PLAYPAUSE", "KEY_STOP", "KEY_NEXT", "KEY_PREVIOUS", "KEY_VOLU
 # audio (it would add sound cards). In aroio.txt, not config.txt: updates do not replace
 # config.txt, aroiod keeps aroio.txt up to date (Device.sync_boot_config).
 KMS_LINE = "dtoverlay=vc4-kms-v3d,noaudio"
+KMS_AUDIO_LINE = "dtoverlay=vc4-kms-v3d"      # "Ohne Aufsteckkarte": sound over HDMI too
 
 
 def boot_lines(driver_id, model_id, ir=False):
@@ -115,7 +116,7 @@ def boot_lines(driver_id, model_id, ir=False):
     controls (rotary encoder, key). Changes need a reboot. The info screen turns itself
     (hardware.display_rotate), so that needs no line here."""
     lines = dac_driver_lines(driver_id)
-    lines.insert(1, KMS_LINE)
+    lines.insert(1, KMS_AUDIO_LINE if driver_id == "onboard" else KMS_LINE)
     model = MODELS.get(model_id) or {}
     enc = model.get("encoder")
     if enc:

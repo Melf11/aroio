@@ -156,6 +156,9 @@ class SimWorld:
         from .real import list_outputs
         return list_outputs(self.cards(), getattr(self, "active_driver", None))
 
+    def output_max_rate(self):
+        return None
+
     def write_boot_config(self, lines):
         self.boot_lines = lines
         self.log("Boot-Partition aroio.txt: " + " | ".join(lines[1:] or ["(leer)"]) + ", aktiv nach Neustart")

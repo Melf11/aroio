@@ -30,7 +30,7 @@ def test_cards_dac_and_mic():
     assert real.find_mic(cards)["id"] == "U18dB"
     # without a HAT: a USB DAC wins over HDMI, the UMIK is never an output
     no_hat = [c for c in cards if c["id"] != "IQaudIODAC"]
-    assert real.find_dac(no_hat) == "hw:CARD=vc4hdmi0,DEV=0"
+    assert real.find_dac(no_hat) == "hdmi:CARD=vc4hdmi0,DEV=0"     # KMS HDMI: IEC958 via alsa-lib
     usb_dac = no_hat + [{"index": 4, "id": "Dragonfly", "driver": "USB-Audio", "name": "AudioQuest DragonFly"}]
     assert real.find_dac(usb_dac) == "hw:CARD=Dragonfly,DEV=0"
 
