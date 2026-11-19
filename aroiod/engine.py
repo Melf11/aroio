@@ -44,6 +44,13 @@ TRANSPORT = {"play", "pause", "next", "previous"}
 LMS_CONTROLS = TRANSPORT | {"seek", "shuffle", "queue"}
 
 
+def stream_db(percent):
+    """PulseAudio's stream volume (Soloist's slider): cubic, 60 % = -13.3 dB."""
+    if percent <= 0:
+        return None
+    return 60.0 * math.log10(percent / 100)
+
+
 def volume_db(percent):
     """0..100 % -> dB. Steeper at the bottom like an analogue pot."""
     if percent <= 0:
@@ -128,7 +135,7 @@ class Device:
     def start(self):
         if self.netsetup:
             self.netsetup.start()
-        self.world.set_volume(0.0 if self.fixed_level else volume_db(self.volume))
+        self.apply_volume()
         self.world.rename(self.config.get("device.name"))
         self.publish_all()
         self.apply_dsp()
@@ -456,8 +463,11 @@ class Device:
             self.hub.notice(f"{SOURCES[sid]['name']} spielt jetzt, {SOURCES[prev]['name']} wurde angehalten.",
                             key="source_switch")
         self.source = sid
-        if prev != sid and not self.fixed_level:
-            self.world.source_volume(sid, self.volume)    # e.g. Spotify's slider shows the Aroio's
+        if prev != sid:
+            # e.g. Spotify's slider shows the Aroio's volume (fixed level: 100 %)
+            self.world.source_volume(sid, 100 if self.fixed_level else self.volume)
+            if not self.measuring:
+                self.apply_volume()
         if sid != "lms":
             self._cancel_end()
             self.meta = meta
@@ -691,6 +701,21 @@ class Device:
         self.publish_queue()
 
     # ── volume ───────────────────────────────────────────────────────────────
+    def apply_volume(self):
+        """The Aroio's volume into CamillaDSP. A source that applies the volume itself
+        (Spotify: Soloist's slider is its PulseAudio stream volume, kept in sync with the
+        Aroio's) gets only the difference of the curves, so every source is equally loud
+        at the same percentage."""
+        if self.fixed_level:
+            self.world.set_volume(0.0)
+            return
+        db = volume_db(0 if self.muted else self.volume)
+        if db is not None and self.source in self.world.attenuating_sources:
+            # never clips (the stream is lower by at least as much); +20 dB at most, which
+            # only touches the bottom few percent (CamillaDSP takes up to +50 dB)
+            db = min(db - stream_db(self.volume), 20.0)
+        self.world.set_volume(db)
+
     def _start_volume(self):
         """The last volume (volume.json), at most audio.start_volume_max."""
         try:
@@ -726,7 +751,7 @@ class Device:
         v = self.volume + delta if delta is not None else value
         self.volume = int(max(0, min(limit, round(v))))
         self.muted = False
-        self.world.set_volume(volume_db(self.volume))
+        self.apply_volume()
         if not from_source and self.source:
             self.world.source_volume(self.source, self.volume)   # the phone's slider follows
         self._save_volume_later()
@@ -734,7 +759,7 @@ class Device:
 
     def set_mute(self, on):
         self.muted = bool(on)
-        self.world.set_volume(None if self.muted else volume_db(self.volume))
+        self.apply_volume()
         self.publish_player()
 
     # ── hardware input ───────────────────────────────────────────────────────
@@ -1092,7 +1117,7 @@ class Device:
         if not self.measuring:
             return
         self.measuring = False
-        self.world.set_volume(0.0 if self.fixed_level else volume_db(0 if self.muted else self.volume))
+        self.apply_volume()
         self.apply_dsp()
 
     # ── remote control (rc-core scancodes) ───────────────────────────────────

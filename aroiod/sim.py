@@ -304,6 +304,8 @@ class SimWorld:
         self.volume_db = db
         self.publish_sim()
 
+    attenuating_sources = frozenset()      # set in tests; the simulator has no Soloist
+
     def source_volume(self, sid, percent):
         """The source's own volume control follows the Aroio (Spotify's slider)."""
         self.source_volumes[sid] = percent

@@ -707,30 +707,42 @@ async def test_volume_is_kept_over_a_restart(tmp_path):
     assert d2.volume == engine.INITIAL_VOLUME and not (tmp_path / "d" / "volume.json").exists()
 
 
-async def test_spotify_slider_is_the_aroio_volume(device):
-    """Soloist's volume (the slider in Spotify) is the Aroio's volume; its first report
-    (always 100 %, -i 100) is not taken, and the Aroio's volume is sent to the slider."""
-    from aroiod import soloist
-    unity = []
+async def test_spotify_slider_is_the_aroio_volume(device, tmp_path):
+    """Soloist's slider (its PulseAudio stream volume) and the Aroio's volume are kept equal;
+    CamillaDSP gets only the difference of the curves. Its first report (always 100 %,
+    -i 100) is not taken. Fixed level: the slider goes back to 100 %."""
+    from aroiod import engine, soloist
+    from aroiod.__main__ import create
+    device.world.attenuating_sources = frozenset({"spotify"})
     c = soloist.SoloistClient(device)
     sent = []
 
     async def send(command, **fields):
         sent.append((command, fields))
         return True
-
-    async def fake_unity(delay=0.3):
-        unity.append(delay)
-    c.send, c.unity = send, fake_unity
+    c.send = send
     device.set_volume(value=40)
     await c.handle({"type": "playback_state", "status": "playing", "volume": 100})
     await asyncio.sleep(0)
     assert device.source == "spotify" and device.volume == 40          # first report ignored
     assert device.world.source_volumes["spotify"] == 40                # Aroio -> slider on start
     await c.handle({"type": "volume_changed", "volume": 25})
-    await asyncio.sleep(0)
-    assert device.volume == 25 and unity                               # stream back to 100 %
+    assert device.volume == 25
+    # the stream is at 25 % (-36.1 dB) already: CamillaDSP adds only the difference
+    assert abs(device.world.volume_db - (engine.volume_db(25) - engine.stream_db(25))) < 1e-6
     await c.set_volume(50)
     assert sent[-1] == ("set_volume", {"volume": 50})
     await c.handle({"type": "volume_changed", "volume": 50})           # echo: no change
     assert device.volume == 25
+    device.source_started("airplay")
+    assert device.world.volume_db == engine.volume_db(25)              # other sources: plain curve
+
+    su = create(tmp_path / "su", sim=True, model="AroioSU", fast=True)
+    su.world.attenuating_sources = frozenset({"spotify"})
+    c2 = soloist.SoloistClient(su)
+    c2.send = send
+    await c2.handle({"type": "playback_state", "status": "playing", "volume": 100})
+    assert su.world.source_volumes["spotify"] == 100
+    await c2.handle({"type": "volume_changed", "volume": 30})
+    await asyncio.sleep(0)
+    assert sent[-1] == ("set_volume", {"volume": 100}) and su.world.volume_db == 0.0

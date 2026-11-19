@@ -45,7 +45,6 @@ WS = os.environ.get("AROIO_SOLOIST_WS", "ws://127.0.0.1:9090")
 DOWNLOAD = "https://soloist-builds.spotifycdn.com/soloist_release_{arch}.tar.gz"
 BUILD_LIFETIME_DAYS = 90
 RATE = 44100
-PULSE_SERVER = "unix:/run/pulse/native"
 # written by /usr/lib/aroio/soloist-run from Soloist's verbose log when a track opens
 FORMAT_FILE = Path(os.environ.get("AROIO_SOLOIST_FORMAT", "/run/aroio/soloist-format"))
 CODECS = {"flac": "FLAC", "vorbis": "Ogg Vorbis", "aac": "AAC", "mp3": "MP3"}
@@ -274,6 +273,9 @@ class SoloistClient:
                 async with aiohttp.ClientSession() as s:
                     async with s.ws_connect(self.url, heartbeat=30) as ws:
                         self.ws, self.connected, quiet = ws, True, False
+                        # a (re)started Soloist begins at 100 % again (-i 100): its first
+                        # report must not set the Aroio to full volume
+                        self.volume = None
                         log.info("Soloist verbunden")
                         self._publish()
                         await self.send("get_auth_state")
@@ -341,23 +343,29 @@ class SoloistClient:
             self.error = msg.get("message")
             log.info("Soloist: %s", self.error)
 
-    # ── volume: the Aroio's volume is the only one ──
-    # Soloist applies its volume (the slider in the Spotify app) as the PulseAudio stream
-    # volume. The Aroio takes the slider as its own volume (like AirPlay) and keeps the stream
-    # at 100 %, so there are never two volumes in a row and fixed-level models stay at full level.
+    # ── volume ──
+    # Soloist applies its volume (the slider in the Spotify app) as its PulseAudio stream
+    # volume and reads it back from there (forcing the stream to 100 % made it report 100 %).
+    # So the slider and the Aroio's volume are kept equal; Device.apply_volume leaves to
+    # CamillaDSP only the difference of the two curves. Fixed level: the slider goes back to 100 %.
     def _volume(self, value):
         try:
             v = max(0, min(100, int(value)))
         except (TypeError, ValueError):
             return
         first, same, self.volume = self.volume is None, v == self.volume, v
-        asyncio.ensure_future(self.unity())
-        if first or same:
+        log.info("Spotify volume %s from Soloist%s", v, " (first, not taken)" if first else " (echo)" if same else "")
+        if first or same or self.device.source != "spotify":
             # Soloist starts at 100 % (-i 100): not a choice of the listener; the same value
             # again is the echo of the Aroio's own set_volume
             return
-        if self.device.source == "spotify":
-            self.device.remote_volume(v)
+        d = self.device
+        if d.fixed_level:
+            asyncio.ensure_future(self.set_volume(100))
+            return
+        d.remote_volume(v)
+        if d.volume != v:                       # above the volume limit: the slider follows
+            asyncio.ensure_future(self.set_volume(d.volume))
 
     async def set_volume(self, percent):
         """The Aroio's volume changed (app, knob): the slider in Spotify follows."""
@@ -365,27 +373,8 @@ class SoloistClient:
         if percent == self.volume:
             return
         self.volume = percent
+        log.info("Spotify volume %s to Soloist", percent)
         await self.send("set_volume", volume=percent)
-        await self.unity()
-
-    async def unity(self, delay=0.3):
-        """Every PulseAudio stream (only Soloist's exist) back to 100 %: Soloist sets its
-        volume there a moment after it changed, and on every new stream."""
-        await asyncio.sleep(delay)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "pactl", "list", "short", "sink-inputs", stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL, env={**os.environ, "PULSE_SERVER": PULSE_SERVER})
-            out, _ = await proc.communicate()
-            for line in out.decode().splitlines():
-                idx = line.split("\t", 1)[0]
-                if idx.isdigit():
-                    p = await asyncio.create_subprocess_exec(
-                        "pactl", "set-sink-input-volume", idx, "100%", stderr=asyncio.subprocess.DEVNULL,
-                        env={**os.environ, "PULSE_SERVER": PULSE_SERVER})
-                    await p.wait()
-        except OSError:
-            pass            # no PulseAudio (development machine)
 
     def _merge(self, item):
         if item and self.item and item.get("uri") == self.item.get("uri"):
@@ -399,7 +388,6 @@ class SoloistClient:
         d = self.device
         if status in ("playing", "buffering"):
             if before not in ("playing", "buffering"):
-                asyncio.ensure_future(self.unity(delay=0.5))    # a new stream starts at Soloist's volume
                 # the codec line comes when Soloist opens its sink, just after "playing"
                 asyncio.get_event_loop().call_later(2.0, self._meta)
             if d.source != "spotify":

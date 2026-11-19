@@ -586,6 +586,9 @@ class RealWorld:
     def set_volume(self, db):
         self._spawn(self.camilla.set_volume(db))
 
+    # sources whose own volume control attenuates before the Aroio (Soloist: PulseAudio stream)
+    attenuating_sources = frozenset({"spotify"})
+
     def source_volume(self, sid, percent):
         """Spotify's slider shows the Aroio's volume (AirPlay/Bluetooth send theirs)."""
         client = getattr(self, "soloist", None)
