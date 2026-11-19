@@ -127,4 +127,6 @@ BR2_PACKAGE_PYTHON_PILLOW=y
 BR2_PACKAGE_FREETYPE=y
 BR2_PACKAGE_JPEG=y
 BR2_PACKAGE_PYTHON_SEGNO=y
+# segno imports xml.sax.saxutils; without pyexpat Buildroot leaves out the whole xml package
+BR2_PACKAGE_PYTHON3_PYEXPAT=y
 BR2_PACKAGE_FONT_INTER=y

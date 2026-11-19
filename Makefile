@@ -59,7 +59,10 @@ image: buildroot
 	$(MAKE) -s -C $(OUT) show-info > $(OUT)/show-info.json
 	# our own packages and the boot files (config.txt, cmdline.txt) come from this repository: fresh on every build
 	$(MAKE) -C $(OUT) aroiod-dirclean aroio-web-dirclean rpi-firmware-dirclean
+	# packages whose options changed in the defconfig (Buildroot does not notice)
+	tools/br-rebuild-changed.py $(OUT)
 	$(MAKE) -C $(OUT)
+	tools/br-rebuild-changed.py $(OUT) --done
 	mkdir -p $(COPY_TO)
 	cp $(OUT)/images/sdcard.img $(COPY_TO)/aroio-sdcard.img
 	# download size: xz shrinks the empty space in the partitions to almost nothing
