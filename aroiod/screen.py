@@ -270,7 +270,7 @@ class Screen:
 
     def _scene_key(self, s):
         kind = self._kind(s)
-        keys = {"starting": (), "setup": ("hotspot",),
+        keys = {"starting": ("starting",), "setup": ("hotspot",),
                 "idle": ("name", "hostname", "lan", "wifi"),
                 "playing": ("name", "source", "title", "artist", "album", "state", "preset",
                             "volume", "muted", "fixed_level", "cover_id")}[kind]
@@ -308,9 +308,11 @@ class Screen:
                    font=self.font("semibold", 32), fill=TEXT_2, anchor="lm")
 
     def _scene_starting(self, s):
+        """Boot and shutdown: the logo, a line, a progress bar while starting."""
         img, d = self.image, ImageDraw.Draw(self.image)
-        logo(img, W // 2 - 90, H // 2 - 150, 180)
-        d.text((W // 2, H // 2 + 110), "Aroio startet …", font=self.font("semibold", 48), fill=TEXT_2, anchor="mm")
+        logo(img, W // 2 - 90, H // 2 - 170, 180)
+        text = s["starting"] if isinstance(s.get("starting"), str) else "Aroio startet …"
+        d.text((W // 2, H // 2 + 90), text, font=self.font("semibold", 48), fill=TEXT_2, anchor="mm")
 
     def _scene_idle(self, s):
         img, d = self.image, ImageDraw.Draw(self.image)
@@ -427,6 +429,10 @@ class Screen:
     def _dynamic_parts(self, s, now):
         kind = self._kind(s)
         parts = []
+        if kind == "starting" and s.get("progress") is not None:
+            box = (W // 2 - 300, H // 2 + 170, W // 2 + 300, H // 2 + 182)
+            p = max(0.0, min(1.0, s["progress"]))
+            parts.append((box, round(p * 200), lambda b=box, v=p: self._paint_bar(b, v)))
         if kind != "starting":
             box = (W - M - 200, 52, W - M, 116)
             text = clock_text(now)
@@ -449,6 +455,12 @@ class Screen:
     def _kind_bg_is_backdrop(self):
         return self._scene and self._scene[0] == "playing" and self._backdrop is not None and \
             self._backdrop_key is not None
+
+    def _paint_bar(self, box, value):
+        self._restore(box)
+        rrect(self.image, box, 6, TRACK)
+        if value > 0:
+            rrect(self.image, (box[0], box[1], box[0] + max(12, (box[2] - box[0]) * value), box[3]), 6, BRAND_BRIGHT)
 
     def _paint_clock(self, box, text):
         self._restore(box)

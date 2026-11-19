@@ -773,6 +773,7 @@ class Device:
     def on_cec_key(self, key):
         """TV remote over HDMI-CEC: arrows and OK work the menu on the info screen
         (aroiod/tvmenu.py), the media keys work like the IR remote's."""
+        log.info("CEC key %s", key)
         if self.tvmenu.key(key):
             return True
         return self.on_key(key)

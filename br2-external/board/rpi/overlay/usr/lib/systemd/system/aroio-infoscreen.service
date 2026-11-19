@@ -1,6 +1,7 @@
 [Unit]
 Description=Aroio info screen on HDMI (only draws while a display is connected)
-After=aroiod.service
+# early: the boot screen (logo, progress) until aroiod answers; not After=aroiod.service
+After=local-fs.target
 Conflicts=getty@tty1.service
 
 [Service]
@@ -11,11 +12,13 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 TTYPath=/dev/tty1
-TTYReset=yes
-TTYVTDisallocate=yes
+TTYReset=no
+TTYVTDisallocate=no
 Nice=10
 Restart=always
 RestartSec=5
+# at shutdown it draws "Aroio startet neu …" itself and exits
+TimeoutStopSec=5
 
 [Install]
 WantedBy=multi-user.target

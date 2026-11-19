@@ -27,6 +27,8 @@ API = "http://127.0.0.1/api/v1/internal"
 FB = "/dev/fb0"
 SYS_FB = "/sys/class/graphics/fb0"
 IDLE_BLANK = 600                    # s without music, then the picture goes off
+BOOT_SECONDS = "/data/aroio/boot-seconds"   # uptime when aroiod answered last time: the progress bar
+
 KDSETMODE, KD_TEXT, KD_GRAPHICS = 0x4B3A, 0x00, 0x01
 FBIOBLANK, FB_BLANK_UNBLANK, FB_BLANK_POWERDOWN = 0x4611, 0, 4
 
@@ -117,6 +119,31 @@ def to_output(img, box, size, rotate):
     return part.resize((max(1, x1 - x0), max(1, y1 - y0)), Image.BILINEAR), (x0, y0)
 
 
+def boot_progress(uptime, expected):
+    """0..0.95 while starting, eased towards the time the last start took."""
+    import math
+    return 0.95 * (1 - math.exp(-2.2 * uptime / max(expected, 3.0)))
+
+
+def read_uptime():
+    try:
+        return float(open("/proc/uptime").read().split()[0])
+    except (OSError, ValueError):
+        return 0.0
+
+
+def shutdown_text():
+    """Stopped by systemd: restart or power off?"""
+    import subprocess
+    try:
+        jobs = subprocess.run(["systemctl", "list-jobs", "--no-legend"], capture_output=True, text=True,
+                              timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        jobs = ""
+    return "Aroio wird ausgeschaltet …" if "poweroff.target" in jobs or "halt.target" in jobs \
+        else "Aroio startet neu …"
+
+
 def console_graphics(on):
     """tty1 (our stdin) in graphics mode: the text console does not draw over us."""
     try:
@@ -126,8 +153,22 @@ def console_graphics(on):
 
 
 def run():
+    import signal
     screen, fb = None, None
     cover_id, cover = None, None
+    try:
+        expected = float(open(BOOT_SECONDS).read())
+    except (OSError, ValueError):
+        expected = 10.0
+    booting = read_uptime() < 120           # started with the system: progress bar until aroiod answers
+
+    def stopping(_sig, _frame):
+        # the system goes down: say so and leave the picture until the reset
+        if screen is not None and fb is not None:
+            for box in screen.draw({"starting": shutdown_text()}):
+                fb.blit(*to_output(screen.image, box, fb.size, getattr(screen, "rotate", 0)))
+        os._exit(0)
+    signal.signal(signal.SIGTERM, stopping)
     rev = None                      # of the TV menu: aroiod answers at once when it changes
     last_music, blanked = time.monotonic(), False
     console_graphics(True)
@@ -152,9 +193,20 @@ def run():
             status = get_json("/status" + (f"?wait={rev}" if rev is not None else ""))
             if status is None:
                 status, rev = {"starting": True}, None
-                time.sleep(1)
+                if booting:
+                    status["progress"] = boot_progress(read_uptime(), expected)
+                time.sleep(0.25)
             else:
                 rev = (status.get("menu") or {}).get("rev")
+                if booting:
+                    booting = False
+                    up = read_uptime()
+                    if abs(up - expected) > 0.5:
+                        try:
+                            with open(BOOT_SECONDS, "w") as fh:
+                                fh.write(f"{up:.1f}\n")
+                        except OSError:
+                            pass
             if status.get("cover_id") != cover_id:
                 cover_id = status.get("cover_id")
                 cover = get_cover() if cover_id else None

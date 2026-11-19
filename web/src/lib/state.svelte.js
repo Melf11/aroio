@@ -59,9 +59,13 @@ function rebootDone(oldVersion) {
   }, 1500);
 }
 
+// A device that is down (restart) does not refuse connections, they just hang until the
+// browser's TCP timeout (20 s and more): every attempt gets a short deadline instead.
+const quick = () => (app.rebooting ? 1500 : 5000);
+
 async function loginNeeded() {
   try {
-    const r = await fetch('/api/v1/auth/status');
+    const r = await fetch('/api/v1/auth/status', { cache: 'no-store', signal: AbortSignal.timeout(quick()) });
     if (!r.ok) return false;
     const s = await r.json();
     return s.enabled && !s.logged_in;
@@ -75,7 +79,9 @@ export async function connect() {
   if (ws && ws.readyState <= 1) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);
-  ws.onopen = () => { retry = 0; };
+  const sock = ws;
+  const deadline = setTimeout(() => { if (sock.readyState === 0) sock.close(); }, quick() + 1000);
+  ws.onopen = () => { retry = 0; clearTimeout(deadline); };
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === 'snapshot') {
@@ -98,7 +104,8 @@ export async function connect() {
   ws.onclose = () => {
     app.connected = false;
     ws = null;
-    const delay = app.rebooting ? 1500 : Math.min(10000, 500 * 2 ** retry++);   // restart: look often
+    clearTimeout(deadline);
+    const delay = app.rebooting ? 750 : Math.min(10000, 500 * 2 ** retry++);   // restart: look often
     setTimeout(connect, delay);
   };
   ws.onerror = () => ws?.close();
