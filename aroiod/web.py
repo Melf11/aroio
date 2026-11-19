@@ -203,6 +203,12 @@ async def internal_status(request):
     if request.remote not in ("127.0.0.1", "::1"):
         raise web.HTTPForbidden()
     d = dev(request)
+    if "wait" in request.query:
+        # the screen waits here for a key of the TV remote (at most 1 s): menu without delay
+        try:
+            await d.tvmenu.wait(int(request.query["wait"]), 1.0)
+        except ValueError:
+            pass
     s = d.hub.snapshot()
     p, n = s.get("player") or {}, s.get("network") or {}
     t = p.get("track") or {}
@@ -219,6 +225,7 @@ async def internal_status(request):
                "preset": sig.get("preset") if sig.get("processing") else None,
                "volume": p.get("volume"), "muted": p.get("muted"), "fixed_level": d.fixed_level,
                "rotate": d.config.get("hardware.display_rotate"),
+               "menu": d.tvmenu.state(),
                "rate": sig.get("rate_out")})
 
 

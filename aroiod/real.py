@@ -539,6 +539,9 @@ class RealWorld:
         from .inputs import InputReader
         self.inputs = InputReader(self.device)
         self.inputs.start()
+        from .cec import Cec
+        self.cec = Cec(self.device)
+        self._spawn(self.cec.start())
         from .airplay_meta import AirplayMeta
         self.airplay = AirplayMeta(self.device)
         self.airplay.start()
@@ -721,6 +724,8 @@ class RealWorld:
             env.parent.mkdir(parents=True, exist_ok=True)
             env.write_text(text)
         self._spawn(_output_ok("bluetoothctl", "system-alias", name))
+        if changed and getattr(self, "cec", None):
+            self._spawn(self.cec.configure(name))            # the name in the TV's input list
         if changed:
             self._spawn(_output_ok("systemctl", "try-restart", "shairport-sync.service", "aroio-soloist.service", "upmpdcli.service"))
 

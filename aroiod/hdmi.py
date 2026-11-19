@@ -128,6 +128,7 @@ def console_graphics(on):
 def run():
     screen, fb = None, None
     cover_id, cover = None, None
+    rev = None                      # of the TV menu: aroiod answers at once when it changes
     last_music, blanked = time.monotonic(), False
     console_graphics(True)
     try:
@@ -148,7 +149,12 @@ def run():
                     continue
                 screen, blanked = Screen(), False
                 log.info("display connected: %dx%d, %d bit", *fb.size, fb.bpp)
-            status = get_json("/status") or {"starting": True}
+            status = get_json("/status" + (f"?wait={rev}" if rev is not None else ""))
+            if status is None:
+                status, rev = {"starting": True}, None
+                time.sleep(1)
+            else:
+                rev = (status.get("menu") or {}).get("rev")
             if status.get("cover_id") != cover_id:
                 cover_id = status.get("cover_id")
                 cover = get_cover() if cover_id else None
@@ -168,7 +174,8 @@ def run():
                 screen.rotate = rotate
                 for box in screen.draw(status):
                     fb.blit(*to_output(screen.image, box, fb.size, rotate))
-            time.sleep(1)
+            else:
+                time.sleep(1)
     finally:
         console_graphics(False)
 

@@ -813,3 +813,88 @@ async def test_boot_config_is_brought_up_to_date(device):
     device.world.boot_lines = ["# other comment"] + [l for l in want if not l.startswith("#")]
     await device.sync_boot_config()
     assert not device.reboot_required
+
+
+async def test_tv_menu_with_the_remote(device):
+    """TV remote over CEC: OK opens the menu, arrows choose, Left/Right change the volume,
+    Klang switches presets, Back goes up; with the menu closed Up/Down is the volume."""
+    m = device.tvmenu
+    device.set_volume(value=40)
+    assert device.on_cec_key("KEY_UP") and device.volume == 40 + device.config.get("hardware.encoder_step")
+    assert m.state()["volume_overlay"] and not m.state()["open"]
+    device.on_cec_key("KEY_OK")
+    st = m.state()
+    assert st["open"] and st["title"] == "Aroio"
+    labels = [i["label"] for i in st["items"]]
+    vol = labels.index("Lautstärke")
+    for _ in range(vol):
+        device.on_cec_key("KEY_DOWN")
+    before = device.volume
+    device.on_cec_key("KEY_LEFT")
+    assert device.volume < before and m.state()["open"]                     # value, not back
+    for _ in range(labels.index("Klang") - vol):
+        device.on_cec_key("KEY_DOWN")
+    device.on_cec_key("KEY_OK")
+    st = m.state()
+    assert st["title"] == "Klang" and st["depth"] == 2
+    target = next(i for i, it in enumerate(st["items"]) if not it.get("active") and it["label"] != "Mono")
+    for _ in range(target):
+        device.on_cec_key("KEY_DOWN")
+    device.on_cec_key("KEY_OK")
+    assert m.state()["items"][target]["active"]
+    device.on_cec_key("KEY_BACK")
+    assert m.state()["title"] == "Aroio"
+    device.on_cec_key("KEY_EXIT")
+    assert not m.state()["open"]
+    device.on_cec_key("KEY_OK")
+    assert not m.state(now=__import__("time").monotonic() + 30)["open"]  # closes by itself
+
+
+def test_cec_answers_what_tvs_ask():
+    from aroiod import cec
+    sent = []
+    a = cec.Adapter("/dev/cec1", None)
+    a.logical_address, a.physical_address, a.send = (lambda: 4), (lambda: 0x1000), sent.append
+    a.handle([0x0F, cec.SET_STREAM_PATH, 0x10, 0x00])                       # TV switched to us
+    assert a.active and sent[-1] == [0x4F, cec.ACTIVE_SOURCE, 0x10, 0x00]
+    a.handle([0x0F, cec.REQUEST_ACTIVE_SOURCE])
+    assert sent[-1] == [0x4F, cec.ACTIVE_SOURCE, 0x10, 0x00]
+    a.handle([0x04, cec.GIVE_DEVICE_POWER_STATUS])
+    assert sent[-1] == [0x40, cec.REPORT_POWER_STATUS, 0x00]
+    a.handle([0x04, cec.MENU_REQUEST, 0x02])
+    assert sent[-1] == [0x40, cec.MENU_STATUS, 0x00]
+    a.handle([0x04, 0x71])                                                   # unknown: abort
+    assert sent[-1] == [0x40, cec.FEATURE_ABORT, 0x71, 0x00]
+    n = len(sent)
+    a.handle([0x04, cec.UI_PRESSED, 0x01])                                   # keys: the kernel's
+    a.handle([0x0F, 0x71])                                                   # broadcast: silence
+    a.handle([0x0F, cec.ACTIVE_SOURCE, 0x20, 0x00])                          # other input
+    assert len(sent) == n and not a.active
+    a.handle([0x0F, cec.REQUEST_ACTIVE_SOURCE])
+    assert len(sent) == n
+    assert cec.osd_name("Küche Süd Wohnbereich") == "Kueche Sued Wo"
+    raw = cec.pack([0x40, 0x90, 0x00])
+    assert len(raw) == cec.MSG_SIZE and cec.unpack(raw) == [0x40, 0x90, 0x00]
+
+
+def test_cec_keys_are_not_ir_codes():
+    """The TV remote's input device sends scancodes too: not taken as IR (learning)."""
+    from aroiod import inputs
+    got = []
+
+    class D:
+        def on_cec_key(self, k):
+            got.append(("cec", k))
+
+        def on_ir(self, code):
+            got.append(("ir", code))
+
+        def on_key(self, k):
+            got.append(("key", k))
+    r = inputs.InputReader(D())
+    r.handle(inputs.EV_MSC, inputs.MSC_SCAN, 0x01, "vc4-hdmi-1")
+    r.handle(inputs.EV_KEY, 103, 1, "vc4-hdmi-1")
+    r.handle(inputs.EV_KEY, 103, 2, "vc4-hdmi-1")                           # held: repeats
+    r.handle(inputs.EV_KEY, 352, 1, "vc4-hdmi-1")
+    r.handle(inputs.EV_MSC, inputs.MSC_SCAN, 0x1835, "gpio_ir_recv")
+    assert got == [("cec", "KEY_UP"), ("cec", "KEY_UP"), ("cec", "KEY_OK"), ("ir", 0x1835)]

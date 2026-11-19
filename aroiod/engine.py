@@ -22,6 +22,7 @@ from . import dsp, models, proxy
 from .config import RATES, Config, Invalid
 from .library import PROVIDERS, SimLibrary
 from .store import Secrets, atomic_write_bytes, atomic_write_json
+from .tvmenu import TVMenu
 
 log = logging.getLogger("aroiod.engine")
 
@@ -86,6 +87,7 @@ class Device:
         self.shuffle, self.repeat = False, "off"
         self.volume = self._start_volume()
         self._volume_save = None
+        self.tvmenu = TVMenu(self)
         self.muted = False
         self.compare_bypass = False
         self.rate = 48000
@@ -767,6 +769,13 @@ class Device:
     def on_encoder(self, steps):
         if not self.fixed_level:
             self.set_volume(delta=steps * self.config.get("hardware.encoder_step"))
+
+    def on_cec_key(self, key):
+        """TV remote over HDMI-CEC: arrows and OK work the menu on the info screen
+        (aroiod/tvmenu.py), the media keys work like the IR remote's."""
+        if self.tvmenu.key(key):
+            return True
+        return self.on_key(key)
 
     def on_key(self, key):
         """Buttons on the device and IR remote (same key names as rc-core)."""

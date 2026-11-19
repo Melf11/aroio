@@ -25,6 +25,7 @@ BRAND = (0, 170, 170)                      # #00AAAA
 BRAND_BRIGHT = (0, 194, 194)               # logo bars on dark
 ON_BRAND = (6, 38, 38)
 LOGO_BG = (11, 46, 46)
+MENU_BG = (18, 28, 29)
 
 FONT_DIRS = ["/usr/share/fonts/inter", ".dev/fonts"]
 WEIGHTS = {"regular": "Inter-Regular.ttf", "semibold": "Inter-SemiBold.ttf", "bold": "Inter-Bold.ttf"}
@@ -104,6 +105,10 @@ def wrap(draw, text, font, width, lines=2):
     return out[:lines]
 
 
+def _overlaps(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
 def clock_text(now):
     return time.strftime("%H:%M", time.localtime(now))
 
@@ -162,6 +167,9 @@ class Screen:
         self._dynamic = {}          # box -> last content of the parts that change by themselves
         self._backdrop_key = None
         self._backdrop = None
+        self._overlay = None        # what the overlay (menu, volume) shows
+        self._overlay_box = None
+        self._under = None          # the picture under the overlay
 
     # the parts that change without a new scene: clock, progress bar
     def draw(self, s):
@@ -172,14 +180,84 @@ class Screen:
         if scene != self._scene:
             self._scene = scene
             self._dynamic = {}
+            self._overlay = self._overlay_box = None
             self._draw_scene(s)
             changed.append((0, 0) + self.size)
         for box, content, painter in self._dynamic_parts(s, now):
+            if self._overlay_box and _overlaps(box, self._overlay_box):
+                continue                    # under the menu: later
             if self._dynamic.get(box) != content:
                 self._dynamic[box] = content
                 painter()
                 changed.append(box)
+        key, box, painter = self._overlay_part(s)
+        if key != self._overlay:
+            if self._overlay_box:
+                self.image.paste(self._under, self._overlay_box[:2])
+                changed.append(self._overlay_box)
+            if key:
+                self._under = self.image.crop(box)
+                painter(box)
+                changed.append(box)
+            self._overlay, self._overlay_box = key, (box if key else None)
         return changed
+
+    # ── overlays: the TV menu, the volume after Up/Down ──
+    def _overlay_part(self, s):
+        menu = s.get("menu") or {}
+        if menu.get("open"):
+            box = (W - M - 680, 150, W - M, 950)
+            key = ("menu", repr({k: menu.get(k) for k in ("title", "index", "items", "depth")}))
+            return key, box, lambda b: self._paint_menu(b, menu)
+        if menu.get("volume_overlay") and s.get("volume") is not None and not s.get("fixed_level"):
+            box = (W // 2 - 340, H - 210, W // 2 + 340, H - 80)
+            key = ("volume", s.get("volume"), bool(s.get("muted")))
+            return key, box, lambda b: self._paint_volume(b, s)
+        return None, None, None
+
+    def _paint_menu(self, box, menu):
+        img, d = self.image, ImageDraw.Draw(self.image)
+        x0, y0, x1, y1 = box
+        rrect(img, box, 32, MENU_BG)
+        d.text((x0 + 48, y0 + 70), menu.get("title") or "", font=self.font("bold", 48), fill=TEXT, anchor="lm")
+        items, index = menu.get("items") or [], menu.get("index") or 0
+        row, top, rows = 80, y0 + 140, 7
+        first = max(0, min(index - rows // 2, len(items) - rows))
+        for i, item in enumerate(items[first:first + rows]):
+            n = first + i
+            y = top + i * row
+            sel = n == index
+            if sel:
+                rrect(img, (x0 + 24, y, x1 - 24, y + row - 8), 18, BRAND)
+            fg = ON_BRAND if sel else TEXT
+            label = ("✓  " if item.get("active") else "") + (item.get("label") or "")
+            value = item.get("value") or ""
+            if item.get("adjust") and sel:
+                value = f"◀  {value}  ▶"
+            vf = self.font("semibold" if sel else "regular", 32)
+            vw = d.textlength(value, font=vf) if value else 0
+            d.text((x0 + 56, y + (row - 8) // 2), fit(d, label, self.font("semibold", 36), x1 - x0 - 140 - vw), 
+                   font=self.font("semibold", 36), fill=fg, anchor="lm")
+            if value:
+                d.text((x1 - 56, y + (row - 8) // 2), value, font=vf, fill=fg if sel else TEXT_2, anchor="rm")
+        if len(items) > rows:
+            d.text(((x0 + x1) // 2, top + rows * row + 4), f"{index + 1} / {len(items)}",
+                   font=self.font("regular", 26), fill=TEXT_3, anchor="mt")
+        hint = "OK wählen  ·  Zurück" if (menu.get("depth") or 1) > 1 else "OK wählen  ·  Zurück schließt"
+        d.text(((x0 + x1) // 2, y1 - 44), hint, font=self.font("regular", 28), fill=TEXT_3, anchor="mm")
+
+    def _paint_volume(self, box, s):
+        img, d = self.image, ImageDraw.Draw(self.image)
+        x0, y0, x1, y1 = box
+        rrect(img, box, 36, MENU_BG)
+        muted = s.get("muted")
+        d.text((x0 + 48, (y0 + y1) // 2), "Lautstärke", font=self.font("semibold", 34), fill=TEXT, anchor="lm")
+        vol = "Stumm" if muted else f"{s['volume']} %"
+        d.text((x1 - 48, (y0 + y1) // 2), vol, font=self.font("bold", 40), fill=TEXT, anchor="rm")
+        bx0, bx1, by = x0 + 270, x1 - 190, (y0 + y1) // 2
+        rrect(img, (bx0, by - 6, bx1, by + 6), 6, TRACK)
+        if not muted and s["volume"]:
+            rrect(img, (bx0, by - 6, bx0 + max(12, (bx1 - bx0) * s["volume"] / 100), by + 6), 6, BRAND_BRIGHT)
 
     def _kind(self, s):
         if s.get("starting"):

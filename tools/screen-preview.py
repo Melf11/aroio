@@ -32,6 +32,17 @@ states = {
                           "album": "Mozart: Piano Concertos Nos. 20 & 21", "duration": 412.0, "position": 301.0,
                           "format": {"codec": "ALAC", "bits": 24, "rate": 96000}, "volume": 0, "muted": True},
 }
+menu = {"open": True, "title": "Aroio", "index": 2, "depth": 1, "rev": 3, "items": [
+    {"label": "Pause"}, {"label": "Nächster Titel"}, {"label": "Lautstärke", "value": "42 %", "adjust": True},
+    {"label": "Klang", "value": "Raumkorrektur Wohnzimmer", "open": "sound"}, {"label": "Favoriten", "open": "favorites"},
+    {"label": "Schließen"}]}
+sound = {"open": True, "title": "Klang", "index": 1, "depth": 2, "rev": 4, "items": [
+    {"label": "Ohne Korrektur"}, {"label": "Raumkorrektur Wohnzimmer", "active": True}, {"label": "BBC-Dip"},
+    {"label": "Echo"}, {"label": "Kopfhörer: Sennheiser HD 600"}, {"label": "Eigener Equalizer"},
+    {"label": "Loudness"}, {"label": "Mono", "value": "aus"}]}
+states["6-menue"] = {**states["4-spotify"], "menu": menu}
+states["7-menue-klang"] = {**states["4-spotify"], "menu": sound}
+states["8-lautstaerke"] = {**states["4-spotify"], "volume": 47, "menu": {"open": False, "volume_overlay": True}}
 for name, st in states.items():
     sc = Screen()
     t = time.perf_counter()
