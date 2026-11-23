@@ -1,5 +1,6 @@
 <script>
-  import { SlidersHorizontal, Wifi, Radio, Bluetooth, Download, Info, Gauge, Cpu, Terminal, Speaker } from '@lucide/svelte';
+  import { SlidersHorizontal, Wifi, Radio, Bluetooth, Download, Info, Gauge, Cpu, Terminal, Speaker, Smartphone } from '@lucide/svelte';
+  import { installed } from '../lib/platform.js';
   import PageHeader from '../components/PageHeader.svelte';
   import LinkRow from '../components/LinkRow.svelte';
   import Toggle from '../components/Toggle.svelte';
@@ -23,6 +24,7 @@
       <li><LinkRow href="/einstellungen/netzwerk" icon={Wifi} label={t('Netzwerk')} value={netText} /></li>
       <li><LinkRow href="/einstellungen/dienste" icon={Radio} label={t('Dienste und Quellen')} value={svcText} /></li>
       <li><LinkRow href="/einstellungen/bluetooth" icon={Bluetooth} label="Bluetooth" value={app.topics.bluetooth?.enabled ? t('An') : t('Aus')} /></li>
+      <li><LinkRow href="/einstellungen/app" icon={Smartphone} label={t('Als App nutzen')} value={installed ? t('Läuft als App') : t('Auf Handy, Tablet oder Computer')} /></li>
       <li><LinkRow href="/einstellungen/lautsprecher" icon={Speaker} label={t('Lautsprecher prüfen')} value={t('Testton und Rauschen')} /></li>
       <li><LinkRow href="/einstellungen/updates" icon={Download} label={t('Updates')} value={t('Version {v}', { v: u?.current })} badge={u?.available ? t('Neu') : ''} badgeLevel="danger" /></li>
       <li><LinkRow href="/einstellungen/geraet" icon={Info} label={t('Über diesen Aroio')} value={`${d.model_label} · ${d.board_label}`} /></li>

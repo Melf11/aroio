@@ -229,6 +229,23 @@ async def internal_status(request):
                "rate": sig.get("rate_out")})
 
 
+@routes.get(A + "/qr.svg")
+async def qr_svg(request):
+    """QR code of a short text (the app's address) for Einstellungen › Als App nutzen."""
+    text = request.query.get("text", "")
+    if not text or len(text) > 200:
+        raise ValueError("Text für den QR-Code fehlt oder ist zu lang.")
+    try:
+        import segno
+    except ImportError:                    # demo in the browser (Pyodide)
+        raise web.HTTPNotFound() from None
+    buf = BytesIO()
+    # a whole SVG file (with xmlns): svg_inline() is only for SVG inside HTML, an <img> shows nothing
+    segno.make(text, error="m").save(buf, kind="svg", scale=8, border=2, dark="#0e1a1a", light="#ffffff",
+                                     xmldecl=False)
+    return web.Response(body=buf.getvalue(), content_type="image/svg+xml", headers={"Cache-Control": "max-age=3600"})
+
+
 @routes.get(A + "/internal/cover")
 async def internal_cover(request):
     """The current cover for the info screen (localhost only): aroiod fetches covers from

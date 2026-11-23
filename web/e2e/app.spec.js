@@ -20,7 +20,7 @@ const ROUTES = ['/', '/musik', '/musik/b?path=local/albums', '/musik/b?path=loca
   '/klang', '/einstellungen', '/einstellungen/allgemein', '/einstellungen/netzwerk', '/einstellungen/dienste',
   '/einstellungen/dienste/spotify', '/einstellungen/dienste/tidal', '/einstellungen/dienste/qobuz', '/einstellungen/dienste/lyrion',
   '/einstellungen/bluetooth', '/einstellungen/updates', '/einstellungen/geraet', '/einstellungen/lautsprecher', '/einstellungen/lizenzen',
-  '/klang/preset/werk-bbcdip', '/klang/kopfhoerer'];
+  '/klang/preset/werk-bbcdip', '/klang/kopfhoerer', '/einstellungen/app'];
 const EXPERT = ['/einstellungen/ton', '/einstellungen/hardware', '/einstellungen/system', '/klang/import'];
 
 test('alle Seiten ohne Barrierefreiheits-Verstöße (hell und dunkel)', async ({ page, request }, info) => {
@@ -458,17 +458,22 @@ test('Firmenzertifikat für den Proxy hinterlegen', async ({ page, request }) =>
   await expect(page.getByText(/^Hinterlegt:/)).toHaveCount(0);
 });
 
-test('Anleitung: Aroio als App auf den Home-Bildschirm', async ({ page, request }) => {
+test('Als App nutzen: eigene Seite in den Einstellungen', async ({ page, request }, info) => {
   await fresh(request);
-  await page.goto('/einstellungen/allgemein');
-  await expect(page.getByRole('heading', { name: 'Als App auf Handy oder Computer' })).toBeVisible();
-  await page.getByRole('radio', { name: 'Mac / PC' }).check();
-  await expect(page.getByText('„Ablage › Zum Dock hinzufügen …“', { exact: false })).toBeVisible();
+  await page.goto('/einstellungen');
+  await page.getByRole('link', { name: /Als App nutzen/ }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Als App nutzen' })).toBeVisible();
   await page.getByRole('radio', { name: 'iPhone / iPad' }).check();
-  await expect(page.getByText('„Zum Home-Bildschirm“')).toBeVisible();
+  await expect(page.getByRole('listitem').filter({ hasText: '„Zum Home-Bildschirm“' })).toBeVisible();
   await page.getByRole('radio', { name: 'Android' }).check();
   await expect(page.getByText('„Zum Startbildschirm hinzufügen“')).toBeVisible();
-  await axe(page, 'install-guide');
+  await page.getByRole('radio', { name: 'Mac / PC' }).check();
+  await expect(page.getByText(/Verknüpfung erstellen|Zum Dock hinzufügen/).first()).toBeVisible();
+  if (info.project.name === 'desktop') {
+    await expect(page.getByRole('img', { name: /QR-Code für http:\/\/aroio\.local/ })).toBeVisible();
+  }
+  await expect(page.getByRole('button', { name: /aroio\.local(:\d+)? kopieren/ })).toBeVisible();
+  await axe(page, 'als-app');
 });
 
 test('WLAN ausschalten', async ({ page, request }) => {

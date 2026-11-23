@@ -1,7 +1,7 @@
 import { mount } from 'svelte';
 import './app.css';
 import App from './App.svelte';
-import { connect } from './lib/state.svelte.js';
+import { app, connect } from './lib/state.svelte.js';
 import { startRouter } from './lib/router.svelte.js';
 
 const DEMO = import.meta.env.MODE === 'demo';
@@ -17,6 +17,11 @@ async function boot() {
   mount(App, { target: document.getElementById('app') });
 }
 boot();
+
+// Chromium offers installing only on HTTPS; if it does, Einstellungen › Als App nutzen
+// shows a button for it instead of the steps.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); app.installPrompt = e; });
+window.addEventListener('appinstalled', () => { app.installPrompt = null; });
 
 // Service worker only where browsers allow it (HTTPS or localhost). Over plain
 // http://aroio.local the app still works and installs on iOS.

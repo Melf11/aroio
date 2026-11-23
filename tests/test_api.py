@@ -618,3 +618,10 @@ async def test_info_screen_status(client, device):
     device.on_cec_key("KEY_OK")                                  # the TV menu goes out as JSON too
     s = await (await client.get("/api/v1/internal/status")).json()
     assert s["menu"]["open"] and any(i["label"] == "Lautstärke" for i in s["menu"]["items"])
+
+
+async def test_qr_code_for_the_app(client):
+    r = await client.get("/api/v1/qr.svg", params={"text": "http://aroio.local"})
+    assert r.status == 200 and r.content_type == "image/svg+xml"
+    assert 'xmlns="http://www.w3.org/2000/svg"' in await r.text()       # else an <img> shows nothing
+    assert (await client.get("/api/v1/qr.svg")).status == 400

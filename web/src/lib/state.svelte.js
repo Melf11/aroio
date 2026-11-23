@@ -7,6 +7,7 @@ export const app = $state({
   everConnected: false,
   rebooting: false,
   rebootSince: 0,
+  installPrompt: null,         // beforeinstallprompt (Chromium, HTTPS only)
   rebootExpected: (() => { try { return +localStorage.getItem('aroio-reboot-s') || 60; } catch { return 60; } })(),
   showBack: false,
   topics: {
