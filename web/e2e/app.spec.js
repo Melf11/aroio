@@ -461,7 +461,9 @@ test('Firmenzertifikat für den Proxy hinterlegen', async ({ page, request }) =>
 test('Anleitung: Aroio als App auf den Home-Bildschirm', async ({ page, request }) => {
   await fresh(request);
   await page.goto('/einstellungen/allgemein');
-  await expect(page.getByRole('heading', { name: 'Als App auf dem Handy' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Als App auf Handy oder Computer' })).toBeVisible();
+  await page.getByRole('radio', { name: 'Mac / PC' }).check();
+  await expect(page.getByText('„Ablage › Zum Dock hinzufügen …“', { exact: false })).toBeVisible();
   await page.getByRole('radio', { name: 'iPhone / iPad' }).check();
   await expect(page.getByText('„Zum Home-Bildschirm“')).toBeVisible();
   await page.getByRole('radio', { name: 'Android' }).check();
