@@ -12,7 +12,12 @@ async function fresh(request, { setup = true } = {}) {
 
 async function axe(page, name) {
   // a toast fading in has too little contrast for a moment: check the settled page
-  await page.evaluate(() => Promise.all(document.getAnimations().map((an) => an.finished.catch(() => {}))));
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations()
+      .filter((an) => an.effect?.getComputedTiming().iterations !== Infinity)   // not spinners, meters
+      .map((an) => an.finished.catch(() => {}))),
+    new Promise((r) => setTimeout(r, 1000)),
+  ]));
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']).analyze();
   const v = r.violations.map((x) => `${x.id} (${x.impact}): ${x.help}\n    ${x.nodes.slice(0, 3).map((n) => n.target.join(' ')).join('\n    ')}`);
   expect(v, `${name}: axe violations`).toEqual([]);
