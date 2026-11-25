@@ -392,6 +392,11 @@ class SoloistClient:
             return
         before, self.status = self.status, status
         d = self.device
+        if not self.active:
+            # Soloist reports the account's playback, also when the phone itself (or another
+            # device) plays: that is not the Aroio playing
+            self._stopped()
+            return
         if status in ("playing", "buffering"):
             if before not in ("playing", "buffering"):
                 # the codec line comes when Soloist opens its sink, just after "playing"
@@ -410,7 +415,7 @@ class SoloistClient:
             self.device.source_stopped("spotify")
 
     def _meta(self):
-        if self.item:
+        if self.item and self.active:
             self.device.external_meta("spotify", track_meta(self.item, self.position))
 
     # ── commands from the Aroio (player buttons, IR, encoder) ──

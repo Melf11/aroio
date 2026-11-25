@@ -728,7 +728,7 @@ async def test_spotify_slider_is_the_aroio_volume(device, tmp_path):
         return True
     c.send = send
     device.set_volume(value=40)
-    await c.handle({"type": "playback_state", "status": "playing", "volume": 100})
+    await c.handle({"type": "playback_state", "status": "playing", "is_active": True, "volume": 100})
     await asyncio.sleep(0)
     assert device.source == "spotify" and device.volume == 40          # first report ignored
     assert device.world.source_volumes["spotify"] == 40                # Aroio -> slider on start
@@ -747,7 +747,7 @@ async def test_spotify_slider_is_the_aroio_volume(device, tmp_path):
     su.world.attenuating_sources = frozenset({"spotify"})
     c2 = soloist.SoloistClient(su)
     c2.send = send
-    await c2.handle({"type": "playback_state", "status": "playing", "volume": 100})
+    await c2.handle({"type": "playback_state", "status": "playing", "is_active": True, "volume": 100})
     assert su.world.source_volumes["spotify"] == 100
     await c2.handle({"type": "volume_changed", "volume": 30})
     await asyncio.sleep(0)
@@ -927,3 +927,30 @@ def test_hdmi_output_follows_the_tv(tmp_path, monkeypatch):
     from aroiod import models
     assert models.KMS_AUDIO_LINE in models.boot_lines("onboard", "RaspberryPi")
     assert models.KMS_LINE in models.boot_lines("aroio", "AroioLT")
+
+
+async def test_spotify_on_the_phone_is_not_the_aroio(device):
+    """Soloist reports the account's playback also when the phone plays (is_active false):
+    the Aroio must not take it as its own source, and the silence watchdog must not
+    pause/play (that paused the phone every few seconds)."""
+    import types
+    from aroiod import real, soloist
+    c = soloist.SoloistClient(device)
+    sent = []
+
+    async def send(command, **fields):
+        sent.append(command)
+        return True
+    c.send = send
+    await c.handle({"type": "playback_state", "status": "playing", "is_active": False, "volume": 60,
+                    "item": {"uri": "spotify:track:1", "decorations": {"identity": {"name": "Unterwegs"}}}})
+    assert device.source != "spotify" and device.state != "playing"
+    device.world.soloist = c
+    w = real.LoopbackWatch(types.SimpleNamespace(source="spotify", world=device.world))
+    assert not w.spotify_check(now=100.0) and not w.spotify_check(now=110.0)
+    # chosen on the phone: now it is the Aroio's
+    await c.handle({"type": "device_changed", "is_active": True})
+    await c.handle({"type": "playback_state", "status": "playing", "is_active": True})
+    assert device.source == "spotify" and device.state == "playing"
+    await c.handle({"type": "device_changed", "is_active": False})      # back to the phone
+    assert device.state == "stopped"

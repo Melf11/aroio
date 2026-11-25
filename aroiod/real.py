@@ -476,7 +476,9 @@ class LoopbackWatch:
         Returns True when it nudged."""
         now = time.monotonic() if now is None else now
         client = getattr(self.device.world, "soloist", None)
-        silent = (self.device.source == "spotify" and client is not None
+        # only when the Aroio is the chosen Spotify device: Soloist also says "playing" while
+        # the phone plays, and pause/play would then interrupt the phone
+        silent = (self.device.source == "spotify" and client is not None and getattr(client, "active", True)
                   and client.status == "playing" and self.rate is None)
         if not silent:
             self._silent_since = None
